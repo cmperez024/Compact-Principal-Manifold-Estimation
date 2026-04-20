@@ -1,0 +1,1450 @@
+---
+title: "Creating the ``r params$package_name`` R package"
+author: "Christopher Perez"
+date: "The Date"
+knit: litr::render
+output: litr::litr_html_document
+params:
+  package_name: "CompactPME"
+  package_parent_dir: "." # <-- relative to this file's location
+---
+
+<!-- This Rmd file contains all the code needed to define an R package.  Press "Knit" in RStudio or more generally run `litr::render("name-of-this-file.Rmd")` to generate the R package.  Remember that when you want to modify anything about the R package, you should modify this document rather than the package that is outputted.
+-->
+
+# Package setup
+
+We start by specifying the information needed in the DESCRIPTION file of the R package.
+
+```{r package-setup, message=FALSE, results='hide'}
+usethis::create_package(
+  path = ".",
+  fields = list(
+    Package = params$package_name,
+    Version = "0.0.1",
+    Title = "Compact Principal Manifold Estimation",
+    Description = "Sample description.",
+    `Authors@R` = person(
+      given = "Christopher",
+      family = "Perez",
+      email = "cmp23b@fsu.edu",
+      role = c("aut", "cre")
+      )
+  )
+)
+
+usethis::use_package("pracma") # for bernoulli polynomials and spherical coordinates
+usethis::use_package("vegan") # isomap
+usethis::use_package("doParallel") # parallelization
+usethis::use_package("foreach")
+usethis::use_package("Riemann") # for kernel smoothing
+usethis::use_package("splines") # for spline approximations
+usethis::use_package("plotly") # for visualization in 3D
+usethis::use_package("dplyr") 
+usethis::use_package("ggplot2") # for plotting
+
+
+usethis::use_mit_license(copyright_holder = "C. Perez")
+```
+
+# Creating the package
+
+
+## General 1d Functions
+
+### Projection
+```{r}
+#' Circular projection, for initialization puprposes
+#' @param X A data `matrix` consisting of N rows and 2 columns
+#' @return A vector of N values between 0 and 1 denoting the circular projection index
+project_circle <- function(X){
+  Xc <- scale(X, scale=F)
+  (atan2(Xc[,2],Xc[,1])/(2*pi)) %% 1
+}
+
+
+
+#' Optimization over a grid. This is to find the best projection index on a 1d Manifold
+#' @param Xraw A data `matrix`
+#' @param res A spline fit function
+#' @param gridSize The number of entries in the partition
+#' @return A vector of projection indices onto the spline
+project_grid <- function(Xraw, res, gridSize = 1000) {
+  # Initialize grid
+ # t_grid <- seq(0, 1, length.out = gridSize) UNCOMMENT THIS UNCOMMENT REMOVE THIS
+  t_grid <- seq(0, 1, length.out = gridSize+1)[-(gridSize+1)]
+  d <- ncol(Xraw)
+  
+  # Define curve based on spline result and vectorize to find min
+  curve <- res(t_grid)
+  idx <- apply(Xraw, 1, function(x) {
+    which.min(rowSums((curve - matrix(rep(x, each=gridSize), nrow=gridSize, ncol = d))^2))
+  })
+  
+  # Return ordering
+  t_grid <- t_grid[idx]
+  #cbind(Xraw[t_sort$ix, ],t_sort$x)
+}
+
+#' Find projection index using an optimization routine. Grid method is preferred for global solutions
+#' @param Xraw A data `matrix`
+#' @param res A spline fit function
+#' @param periodic Whether or not the spline is periodic. `T` for the circle, `F` for the interval
+#' @return The projection indices
+project_optimize <- function(Xraw, res, periodic = F) {
+  # Intialize t
+  n <- nrow(X)
+  topt <- rep(0, n)
+  # Apply iterative optimization scheme based on spline fit
+  
+  for (i in 1:n) {
+    ff <- function(t) {
+      sum((Xraw[i, ] - res(t) )^2)
+    }
+    t[i] <- optimize(ff, interval = c(0, 1))$minimum
+  }
+  # Return t
+  ret <- topt
+  
+  if(periodic)
+    ret <- topt %% 1
+  
+  return(ret)
+}
+
+
+```
+
+
+### Kernel smoothing
+```{r}
+#' Computes variance heterogneity given the results of local_var_1d. Also used for the 2d case.
+#' @param sigma2_hat vector of smoothed MSE values
+#' @return A list consisting of the mean, standard deviation, coefficient of variation, and spread.
+var_het <- function(sigma2_hat) {
+  mean_sigma2 <- mean(sigma2_hat)
+  sd_sigma2   <- sd(sigma2_hat)
+  cv          <- sd_sigma2 / (mean_sigma2 + 1e-12)  # coefficient of variation
+  spread      <- max(sigma2_hat) - min(sigma2_hat)
+  list(mean = mean_sigma2, sd = sd_sigma2, cv = cv, spread = spread)
+}
+
+
+#'  Compute smoothed residuals using kernel smoothing
+#'  @param t projection indices
+#'  @param resid_sq residual values
+#'  @param grid_eval grid size for smoothing
+#'  @param bandwidth bandwidth value. NULL for automatic selection
+#'  @param kernel the kernel method for ksmooth
+#'  @return A list consisting of the evaluation grid, the fitted residuals, and the bandwidth.
+local_var_1d <- function(t, resid_sq, periodic=F,
+                         grid_eval = 100,
+                         bandwidth = NULL,
+                         kernel = "normal") {
+  ## periodic extension: t-1, t, t+1
+  t_ext <- t %% 1 # CHANGE MENG added %% 1
+  e2_ext <- resid_sq
+  
+  # If periodic (set periodic=T for circle template)
+  if(periodic){
+    t_ext  <- c(t_ext - 1, t_ext, t_ext + 1)
+    e2_ext <-  rep(resid_sq, 3)
+    print("Doing periodic")
+  }
+  
+  ## ---------- automatic bandwidth selection ----------
+  if (is.null(bandwidth)) {
+    bw <- NA_real_
+    
+    if (requireNamespace("KernSmooth", quietly = TRUE)) {
+      ord <- order(t)
+      tx  <- t[ord]
+      ey  <- resid_sq[ord]
+      bw_try <- try(KernSmooth::dpill(x = tx, y = ey), silent = TRUE)
+      
+      if (!inherits(bw_try, "try-error") && is.finite(bw_try) && bw_try > 0) {
+        bw <- bw_try
+      }
+    }
+    
+    if (!is.finite(bw) || bw <= 0) {
+      bw <- stats::bw.SJ(t)
+    }
+    
+    bandwidth <- bw
+  }
+  ## ---------------------------------------------------
+ # grid <- seq(0, 1, length.out = grid_eval) CHANGE MENG
+  grid <- seq(0, 1, length.out = grid_eval + 1)[-(grid_eval + 1)]  # [0,1)
+  
+  ks <- ksmooth(
+    x        = t_ext,
+    y        = e2_ext,
+    kernel   = kernel,
+    bandwidth = bandwidth,
+    x.points = grid
+  )
+  sigma2_hat <- pmax(ks$y, 0)  # clamp to nonnegative
+  list(s = grid, sigma2_hat = sigma2_hat, bandwidth = bandwidth)
+}
+```
+
+
+### Miscellaneous
+```{r}
+#' An isomap method to find the smallest k so that the graph is not fragmented
+#' @param X the NxD data matrix
+#' @param k the starting value for the k parameter search
+#' @param d The dimension we wish to get values for. Use 1 for the line, 2 for S1, 3 for S2
+#' @return A list consisting of the `isomap` result and the optimal `k` value.
+iso_try <- function(X, k=1, d=1){
+  k<-k
+  repeat{
+    output <- try(vegan::isomap(dist(X),ndim=d,k=k),silent = T)
+    if(!inherits(output, "try-error")) return(list(iso=output, k = k))
+    
+    k <- k+1
+    
+  }
+}
+
+#' Normalizing for the 0,1 interval
+#' @param t vector of projection indices
+#' @return The normalized values
+normalize <- function(t){
+  a <- min(t)
+  b <- max(t)
+  (t-a)/(b-a)
+}
+
+#' Computes residuals. Also works for the 2d case
+#' @param Xdata NxD data matrix
+#' @param t vector of projection indices
+#' @param splineresult a spline fit as a function
+#' @return The mean of squared residuals
+spline_error <- function(Xdata, t, splineresult){
+  mean((rowSums( (Xdata-splineresult(t))^2)))
+}
+
+```
+
+
+## 1d Interval Functions
+
+
+### RKs
+
+The reproducing kernels.
+```{r}
+#' # The reproducing kernel for the interval
+#' 
+#' @param s eval location 1. Should be a vector of equal length to t. 
+#' @param t eval location 2. Should be a vector of equal length to s.
+#' @return The RK evaluation
+Rk <- function(s,t){
+  1/3*pmin(s,t)^3 - 1/2 *pmin(s,t)^2 * (s+t) + pmin(s,t)*s*t
+}
+```
+
+
+
+### Splines
+
+We define the spline fit for each iteration. We provide both the exact method (based on the representer theorem) as well as an approximate method utilizing external packages.
+
+```{r}
+#' # The spline fit for the 1d Interval
+#' 
+#' @param X the NxD data matrix where N is the number of observations and D is either 2 or 3.
+#' @param t the set of projection indices associated with the observations of X. Should be a vector of length N.
+#' @param lambda the regularization parameter. Should be a real number greater than 0, typically in the magnitude of 1e-12 (interpolating) to 1e-2 (corresponds to lambda=infinity case in paper).
+#' @return Returns the spline fit as a function and alpha value as an attribute.
+#' @export
+spline1d_interval <- function(X,t,lambda){
+  n <- nrow(X)
+  # T matrix
+  t <- as.vector(t)
+  Tmat <- cbind(1, t)
+  
+  #Sigma <- combn(1:n, n, Vectorize(function(i, j) Rk(t[i],t[j])))[,,1]
+  Sigma <- outer(t, t, function(s, t) Rk(s, t))
+  
+  M <- Sigma + n*lambda*eye(n)
+  
+  # Theta factor (multiplies y) same for x and y coordinate. Calculate once.
+  #Minv <- solve(M)
+  # K is symmetric positive definite by propertie of rk. M is also symmetric positive definite
+  # chol2inv chol M is 2x faster than normal solve
+  Minv <- chol2inv(chol(M))
+  #Minv <- solve(M)
+  
+  # Precompute coefficients
+  theta_coeffs <- ( solve(t(Tmat) %*% Minv %*% Tmat) %*% t(Tmat) %*% Minv) %*% X # coefficients for null space
+  alpha_coeffs <- Minv %*% (X - Tmat %*% theta_coeffs)  # (n x D) # coefficients for penalized space
+  
+  # calculate periodic function each dimension. Help of chatgpt ===
+  fx <- function(x) {
+    Fmat <- outer(x, t, function(xi, tj) Rk(xi, tj))  # length(x) x n
+    Fmat %*% alpha_coeffs + cbind(1, x) %*% theta_coeffs
+  }
+  
+  # is this correct?
+  attr(fx, "alpha") <- sum(diag(t(alpha_coeffs) %*% Sigma %*% alpha_coeffs))
+  
+  return(fx)
+}
+
+#' # The approximate spline fit for the 1d Interval
+#' 
+#' @param X the NxD data matrix where N is the number of observations and D is either 2 or 3.
+#' @param t the set of projection indices associated with the observations of X. Should be a vector of length N.
+#' @param lambda the regularization parameter.
+#' @return The spline fit as a function and alpha value as an attribute.
+#' @export
+spline1d_interval_approx <- function(X,t,lambda){
+  
+  # Get spline fits for arbitrary ambient dimension
+  D <- ncol(X)
+  N <- nrow(X)
+  fits <- vector(mode="list", length=D)
+  
+  fits <- apply(X,2, function(data_col){
+    smooth.spline(t, data_col,lambda=lambda)
+  })
+  
+  
+  # Calculate penalty matrix for use in the algorithm to visualize cost functional
+  # We utilize the fact that the approximate method is based on B-spline expansion
+  # Return penalty
+  penalty <- 0
+  for(i in seq_along(fits)){
+    fiti <- fits[[i]]
+    c <- fiti$fit$coef
+    knotvals <- fiti$fit$knot
+    
+    t_grid <- seq(min(knotvals), max(knotvals), length.out=10*N)  # fine grid
+    delta <- diff(t_grid)[1]  # step size for numerical integration
+    
+    B_dd <- splines::splineDesign(
+      knots = knotvals,
+      x = t_grid,
+      ord = 4,        # cubic spline
+      derivs = 2,     # second derivatives
+      outer.ok = TRUE
+    )
+    
+    Sigma <- t(B_dd) %*% B_dd * delta
+    
+    penalty <- penalty + t(c) %*% Sigma %*% c
+  }
+  
+  spline_fun <- function(tnew) {
+     eval <- lapply(fits, function(spline) predict(spline, tnew)$y)
+     do.call(cbind, eval)
+  }
+  
+  attr(spline_fun, "alpha") <- penalty 
+  spline_fun
+
+}
+```
+
+
+### PME Algorithm for [0,1]
+```{r}
+#' # The spline fit for the 1d Interval
+#' 
+#' @param data an NxD data matrix where N is the number of observations and D is either 2 or 3.
+#' @param lambdas A numeric vector of lambda values where we will perform a spline fit on. Lambda values typically are in the range of 1e-12 to 1e-2 for interpolationg and for limiting lambda form respectively.
+#' @param gridSize the number of data points to define the partition of the grid search when finding optimal projection indices. See section C.2 "computing projection indices" in the paper
+#' @param min_iter the minimum number of total iterations of PME. Default is 1 for speed, but choosing a higher number is useful if you want to visualize the cost function.
+#' @param max_iter the maximum number of iterations of PME. Prevents the algorithm from stalling.
+#' @param err_tol error tolerance for convergence of the algorithm. Lower values result in longer runtimes, and more likely to hit the maximum iteration cap.
+#' @param optimize_lambda whether or not to perform the method of section 5, Tuning Parameter Selection. If true, additional values will be returned, being the coefficient of variation at each lambda, along with the mean residual and standard deviation residual used to calculate it.
+#' @param lvp_grid The number denoting the size of the grid used for kernel smoothing for the tuning parameter selection. If left as NULL, it will choose a grid of 10 times the sample size.
+#' @param cl A a makeCluster object for parallelization. For most cases, should be left null so that a new cluster is made upon runtime.
+#' @param parallel whether or not to run the algorithm parallel. The algorithm will be parallelized with respect to lambda and is recommended if your lambdas vector contains many values. Not recommended for only a handful of lamda values unless your dataset is large.
+#' @param k_init The starting value for a search of the ISOMAP nearest neighbor parameter k. Our method is to find the smallest such k such that the ISOMAP graph is connected, as detailed in the iso_try function. The default is 1 to find the smallest possible.
+#' @param approx whether or not to use the approximate spline method. We recommend to set this to be TRUE for very large lambda vectors and or very large sample sizes.
+#' @return A list containing
+#' \describe{
+#' \item{spline_list}{A  containing spline functions corresponding to the lambda values}
+#' \item{lambda_list}{Numeric vector of lambda values}
+#' }
+#' @export
+#' @importFrom foreach %dopar% %do%
+#' @importFrom splines splineDesign
+pme_1d_interval <- function(data, lambdas, gridSize = 1000, min_iter=1, max_iter = 10, optimize_lambda=F,
+                                  err_tol=0.01,lvp_grid=NULL, cl=NULL,parallel=F, k_init = 1,
+                                  approx=F)
+{
+  n <- nrow(data)
+  X <- data
+  D <- ncol(data)
+  
+  lvp_grid <- ifelse(is.null(lvp_grid), 10*n, lvp_grid)
+  
+  # Initialize step: project onto unit circle. This is independent of the lambda choice.
+  tinit <- NULL
+  
+  # Rule of thumb for choosing iso. Smallest possible without error
+  isores <- iso_try(X, k_init)
+  iso <- isores$iso
+  k <- isores$k
+  print(paste0("k is ", toString(k)))
+  
+  tinit <- normalize(iso$points)
+  
+  # Projection wrapper
+  miniproj <- function(Xraw, newSpline){
+    project_grid(Xraw, newSpline, gridSize)
+  }
+  
+  spline1d_interval_func <- ifelse(approx, spline1d_interval_approx,
+                                   spline1d_interval)
+  
+  # Setup parallel cluster
+  # Setup cluster if not provided
+  stop_after <- FALSE
+  if (is.null(cl) && parallel) {
+    numCores <- parallel::detectCores() - 1
+    cl <- parallel::makeCluster(numCores)
+    doParallel::registerDoParallel(cl)
+    stop_after <- TRUE
+  }
+  # run parallel? T or F
+  operator <- if(parallel) `%dopar%` else `%do%` #thanks chatgpt
+  
+  
+  results <-operator( foreach::foreach(i = 1:length(lambdas), 
+                              .packages = c("stats", "pracma", "splines"),
+                              .export = c("spline1d_interval","project_grid", "project_optimize",
+                                          "spline_error","Rk", "local_var_1d", "var_het","normalize")), {
+                                            lambda <- lambdas[i]
+                                            #splines <- vector(mode="list",length=max_iter)
+                                            alphas <-rep(0,max_iter)
+                                            fidelities <- rep(0, max_iter)
+                                            
+                                            # Setup first spline fit
+                                            spl <- spline1d_interval_func(X,tinit, lambdas[i])
+                                            alphas[1] <- sum(attr(spl, "alpha"))
+                                            
+                                            
+                                            # Setup first projection 
+                                            # tt <- list() # list of t values
+                                            t_proj<- normalize(miniproj(X,spl)) # evaluate first projection set
+                                            fidelities[1] <- spline_error(X, t_proj, spl)
+                                            
+                                            # Repeat until error small
+                                            err <- err_tol + 1
+                                            iter <- 1
+                                            #Diter <- rep(Inf, max_iter)
+                                            # Initial error
+                                            #Diter[iter] <- spline_error(X, t_proj, spl)
+                                            
+                                            
+                                            # Iteriate until error convergences
+                                            while( (err > err_tol || iter < min_iter) &&  iter < max_iter){
+                                              iter <- iter+1
+                                              
+                                              #  Get newest spline fit
+                                              spl <- spline1d_interval_func(X, t_proj, lambdas[i])
+                                              alphas[iter] <- attr(spl, "alpha")
+                                              
+                                              # Calculate new projection
+                                              t_proj <- normalize(miniproj(X,spl)) # evaluate first projection set
+                                              fidelities[iter] <- spline_error(X,t_proj, spl)
+                                              
+                                              # Get newest error
+                                              #Diter[iter] <- spline_error(X,tt[[iter]], splines[[iter]])
+                                              
+                                              # Compare old error
+                                              err <-abs((fidelities[iter] - fidelities[iter-1])/fidelities[iter-1])
+                                            }
+                                            
+                                            resid_sq <- rowSums( (X - spl(t_proj))^2)
+                                            
+                                            # Compute variance heterogeneity
+                                            vh <- NULL
+                                            if(optimize_lambda){
+                                              lvp <- local_var_1d(t_proj, resid_sq,grid_eval=lvp_grid)$sigma2_hat
+                                              vh <- var_het(lvp) # get coefficient of variation
+                                            }
+                                            
+                                            
+                                            list(spline = spl, X = X, tproj = t_proj, lambda = lambdas[i],
+                                                 resid_sq = resid_sq, cv = vh$cv,alphas=alphas[1:iter],
+                                                 mean_sq = fidelities[1:iter], cost_functional = lambdas[i]*alphas[1:iter] + fidelities[1:iter], vh_mean = vh$mean,
+                                                 vh_sd = vh$sd)
+                                          })
+  # Aggregate results and find minimizing spline
+  spline_list <- lapply(results, function(res) res$spline)
+  proj_list <- lapply(results, function(res) res$tproj)
+  lambda_list <- lambdas
+  alpha_list <- lapply(results, function(res) res$alphas)
+  mean_sq_list <- lapply(results, function(res) res$mean_sq)
+  cost_functional_list <- lapply(results, function(res) res$cost_functional)
+  
+  
+  list_return <- list(spline_list = spline_list, lambda_list = lambda_list, proj_list = proj_list,
+                      alpha_list = alpha_list, mean_sq_list = mean_sq_list,
+                      cost_functional_list = cost_functional_list, dataset=data)
+  
+  
+  # If optimize lambda true, add optimal spline by cv.
+  # also add cv list for reference
+  if(optimize_lambda){
+    cv_list <- sapply(results, function(res) res$cv)
+    vh_mean_list <- sapply(results, function(res) res$vh_mean)
+    vh_sd_list <- sapply(results, function(res) res$vh_sd)
+    
+    min_ind <- which.min(cv_list)
+    list_return$spline_optimal = spline_list[[min_ind]]
+    list_return$lambda_optimal = lambda_list[min_ind]
+    list_return$cv = cbind(lambda = lambdas, cv = cv_list)
+    list_return$vh_mean = cbind(lambda = lambdas, vh_mean = vh_mean_list)
+    list_return$vh_sd = cbind(lambda = lambdas, vh_sd = vh_sd_list)
+  }
+  # Return list structure
+  #list_return <- list(spline_optimal = spline_list[[min_ind]], lambda_optimal = lambda_list[min_ind],
+  #  spline_list = spline_list, lambda_list = lambda_list, cv_list = cv_list)
+  
+  
+  # stop the cluster
+  on.exit({
+    if (stop_after) parallel::stopCluster(cl)
+  }, add = TRUE)
+  
+  list_return$template <- "interval"
+  list_return$D <- D
+  class(list_return) <- "cpme"
+  
+  return(list_return)
+}
+```
+
+
+
+
+
+## 1d Circle Functions
+
+### RKs
+
+We define the reproducing kernel function.
+
+```{r}
+#' Helper function for the kernel
+#' 
+#' @param r degree of the kernel
+#' @param t where we evaluate
+krt <- function(r, t) {
+  tfrac <- t - floor(t)
+  bernoulli(r, tfrac) / factorial(r)
+}
+
+#' The Reproducing kernel for S1
+#' 
+#' @param r degree
+#' @param s eval location 1
+#' @param t eval location 2
+krst <- function(r, s, t) {
+  krt(r, s - t)
+}
+```
+
+
+
+### Splines for S1
+Fits a spline based on data and projection indices.
+```{r}
+#' Fit spline
+#' 
+#' @param X data
+#' @param t projection indices
+#' @param lambda smoothing parameter
+#' @export
+spline1d_periodic <- function(X,t, lambda) {
+  n <- nrow(X)
+  #t <- as.vector(t)
+  t<-as.vector(t)%% 1# normalize to 0 1. CHANGE MENG CHANGE MENG
+  # ambient dimension is D
+  
+  # define matrices. m = 2 corresponds to 2nd deriv penaltty
+  m <- 2
+  r <- 0:m
+  Tmat <- ones(n,1)
+  #K <-  ((-1)^(m - 1)) *combn(1:n, n, Vectorize(function(j, k) krst(2 * m, t[j], t[k])))[,,1]
+  K <- (-1)^(m-1) * outer(t, t, function(s, t) krst(2*m, s, t))
+  M <- K + n * lambda * eye(n)
+  
+  # Theta factor (multiplies y) same for x and y coordinate. Calculate once.
+  #Minv <- solve(M)
+  # K is symmetric positive definite by propertie of rk. M is also symmetric positive definite
+  # chol2inv chol M is 2x faster than normal solve
+  Minv <- chol2inv(chol(M))
+  
+  # Precompute coefficients
+  theta_coeffs <- ( solve(t(Tmat) %*% Minv %*% Tmat) %*% t(Tmat) %*% Minv) %*% X           # (p x D)
+  alpha_coeffs <- Minv %*% (X - Tmat %*% theta_coeffs)  # (n x D)
+  
+  # calculate periodic function each dimension. Help of chatgpt ===
+  fx <- function(x) {
+    # Compute kernel matrix once
+    Fmat <- outer(x, t, function(xi, tj) krst(2*m, xi, tj))  # length(x) x n
+    # Combine all dimensions at once
+    (-1)^(m-1) * Fmat %*% alpha_coeffs + matrix(rep(theta_coeffs, each=length(x)), nrow=length(x))
+    # end chatgpt ===
+  }
+  
+  attr(fx, "alpha") <- sum(diag(t(alpha_coeffs) %*% K %*% alpha_coeffs))
+  
+  return(fx)
+  # return function list for each dim
+}
+
+#' Approximate spline for S1
+#' @param X NxD data matrix
+#' @param t projection indices
+#' @param lambda smoothing parameter value
+#' @param k number of basis functions for approximation
+#' @param rescale_lam whether or not to rescale lambda so that the lambda choices for the approximate method correspond roughly to the exact method. Setting to T tries to make the scale more similar to the exact method, so identical lambda across the methods yield similar results
+#' @export
+spline1d_periodic_approx <- function(X,t,lambda, k=60,rescale_lam=F){
+  
+  # Get spline fits for arbitrary ambient dimension
+  D <- ncol(X)
+  N <- nrow(X)
+  fits <- vector(mode="list", length=D)
+  
+  #t <- as.vector(t)
+  t<-as.vector(t)%% 1 # normalize to 0 1. CHANGE MENG CHANGE MENG
+  
+  # scale lambda to our typical domain
+  mylambda <- lambda* (10^9)^rescale_lam
+  fits <- apply(X,2, function(data_col){
+    
+    mgcv::gam(data_col ~ s(t, bs = "cc", k=k),
+              knots = list(t=c(0,1)),
+              sp = mylambda,
+              method = "REML",
+              #norescale=T
+              )
+  })
+  
+  
+  # Calculate penalty
+  # Return penalty
+  penalty <- 0
+  for(i in seq_along(fits)){
+    fiti <- fits[[i]]
+    S <- fiti$smooth[[1]]
+    # Get  penalized part of coefficient vector
+    c <- fiti$coefficients[S$first.para:S$last.para]
+    penalty <- penalty + t(c) %*% S$S[[1]] %*% c
+  }
+  
+  
+  spline_fun <- function(tnew) {
+    eval <- lapply(fits, function(spline) predict(spline, newdata=data.frame(t=tnew),type="response"))
+    do.call(cbind, eval)
+  }
+  
+  attr(spline_fun, "alpha") <- penalty 
+  spline_fun
+  
+}
+```
+
+### PME Algorithm for S1
+
+The main PME algorithm for the 1d circle case.
+
+```{r}
+#' # The spline fit for the 1d Interval
+#' 
+#' @param data an NxD data matrix where N is the number of observations and D is either 2 or 3.
+#' @param lambdas A numeric vector of lambda values where we will perform a spline fit on. Lambda values typically are in the range of 1e-12 to 1e-2 for interpolationg and for limiting lambda form respectively.
+#' @param method Method for the projection index search. We always recommend using the default which is the grid approach for 1-dimeensional template manifolds. The alternative is "optimize" based on built-in R routines. See function project_optimize.
+#' @param gridSize the number of data points to define the partition of the grid search when finding optimal projection indices. See section C.2 "computing projection indices" in the paper
+#' @param min_iter the minimum number of total iterations of PME. Default is 1 for speed, but choosing a higher number is useful if you want to visualize the cost function.
+#' @param max_iter the maximum number of iterations of PME. Prevents the algorithm from stalling.
+#' @param err_tol error tolerance for convergence of the algorithm. Lower values result in longer runtimes, and more likely to hit the maximum iteration cap.
+#' @param init_iso Whether or not to use the ISOMAP initialization. This should be set to false if the data satisfies a star-shape property (e.g. circles, ellipses, star-shapes, etc). If not, set to true (e.g., moon shapes, cashew shapes, etc.). See section C.1 Initialization in the paper for more details.
+#' @param optimize_lambda whether or not to perform the method of section 5, Tuning Parameter Selection. If true, additional values will be returned, being the coefficient of variation at each lambda, along with the mean residual and standard deviation residual used to calculate it.
+#' @param cl A a makeCluster object for parallelization. For most cases, should be left null so that a new cluster is made upon runtime.
+#' @param lvp_grid The number denoting the size of the grid used for kernel smoothing for the tuning parameter selection. If left as NULL, it will choose a grid of 10 times the sample size.
+#' @param parallel whether or not to run the algorithm parallel. The algorithm will be parallelized with respect to lambda and is recommended if your lambdas vector contains many values. Not recommended for only a handful of lamda values unless your dataset is large.
+#' @param k_init The starting value for a search of the ISOMAP nearest neighbor parameter k. Our method is to find the smallest such k such that the ISOMAP graph is connected, as detailed in the iso_try function. The default is 1 to find the smallest possible.
+#' @param approx whether or not to use the approximate spline method. We recommend to set this to be TRUE for very large lambda vectors and or very large sample sizes.
+#' @export
+#' @importFrom foreach %dopar% %do%
+pme_1d_periodic <- function(data, lambdas, method = "grid", gridSize = 1000,  min_iter=1, max_iter = 10, err_tol=0.01, k_init = 1,init_iso = F, optimize_lambda=F,
+                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F)
+{
+  n <- nrow(data)
+  X <- data
+  D <- ncol(data)
+  
+  
+  lvp_grid <- ifelse(is.null(lvp_grid), 10*n, lvp_grid)
+  
+  # Initialize step: project onto unit circle. This is independent of the lambda choice.
+  tcircle <- NULL
+  if(D == 2 & !init_iso){
+    tcircle <- project_circle(X)
+  }else{
+    iso2t <- iso_try(X, k_init, 2)
+    
+    iso2 <- iso2t$iso
+    k <- iso2t$k
+    print(paste0("k is ", toString(k)))
+    
+    tcircle <- project_circle(iso2$points)
+  }
+  
+  
+  # Initialize step: project onto unit circle. This is independent of the lambda choice.
+  tinit <- NULL
+  
+  # Rule of thumb for choosing iso. Smallest possible without error
+  isores <- iso_try(X, k_init)
+  iso <- isores$iso
+  k <- isores$k
+  print(paste0("k is ", toString(k)))
+  
+  tinit <- normalize(iso$points)
+  
+  
+  miniproj <- function(Xraw, newSpline){
+    Xt<-NULL
+    if(method == "grid"){
+      tt <- project_grid(Xraw, newSpline, gridSize)
+      #print(tt)
+    } else if(method == "optimize"){
+      tt<- project_optimize(Xraw,newSpline,periodic=T)
+    }
+    tt
+  }
+  
+  spline1d_periodic_func <- ifelse(approx, spline1d_periodic_approx,
+                                   spline1d_periodic)
+  # Let fk denote kth spline fit, and pi_k the kth projection.
+  # fk is based on pi-(k-1), and pi_k is based on fk.
+  # Repeat whole scheme for each lambda
+  
+  # Setup parallel cluster
+  # Setup cluster if not provided
+  stop_after <- FALSE
+  if (is.null(cl) && parallel) {
+    numCores <- parallel::detectCores() - 1
+    cl <- parallel::makeCluster(numCores)
+    doParallel::registerDoParallel(cl)
+    stop_after <- TRUE
+  }
+  # run parallel? T or F
+  operator <- if(parallel) `%dopar%` else `%do%` #thanks chatgpt
+  
+  # Main algorithm loop
+  results <-operator( foreach::foreach(i = 1:length(lambdas), 
+                              .packages = c("stats", "pracma"),
+                              .export = c("spline1d_periodic","project_grid","project_circle", "project_optimize",
+                                          "spline_error","krt","krst", "local_var_1d","var_het")), {
+                                            
+                                            print("init start")
+                                            lambda <- lambdas[i]
+                                            #splines <- vector(mode="list",length=max_iter)
+                                            alphas <-rep(0,max_iter)
+                                            fidelities <- rep(0, max_iter)
+                                            
+                                            # Setup first spline fit
+                                            spl <- spline1d_periodic_func(X,tcircle, lambdas[i])
+                                            alphas[1] <- attr(spl, "alpha")
+                                            
+                                            
+                                            # Setup first projection 
+                                            # tt <- list() # list of t values
+                                            t_proj<- miniproj(X,spl) %% 1 # evaluate first projection set
+                                            fidelities[1] <- spline_error(X, t_proj, spl)
+                                            
+                                            # Repeat until error small
+                                            err <- err_tol + 1
+                                            iter <- 1
+                                            #Diter <- rep(Inf, max_iter)
+                                            # Initial error
+                                            #Diter[iter] <- spline_error(X, t_proj, spl)
+                                            
+                                            
+                                            # Iteriate until error convergences
+                                            while( (err > err_tol || iter < min_iter) &&  iter < max_iter){
+                                              iter <- iter+1
+                                              
+                                              #  Get newest spline fit
+                                              spl <- spline1d_periodic_func(X, t_proj, lambdas[i])
+                                              alphas[iter] <- attr(spl, "alpha")
+                                              
+                                              # Calculate new projection
+                                              t_proj <- miniproj(X,spl) %% 1 # evaluate first projection set
+                                              fidelities[iter] <- spline_error(X,t_proj, spl)
+                                              
+                                              # Get newest error
+                                              #Diter[iter] <- spline_error(X,tt[[iter]], splines[[iter]])
+                                              
+                                              # Compare old error
+                                              err <-abs((fidelities[iter] - fidelities[iter-1])/max(fidelities[iter-1], 1e-12))
+                                            }
+                                            
+                                            resid_sq <- rowSums( (X - spl(t_proj))^2)
+                                            
+                                            # Compute variance heterogeneity
+                                            vh <- NULL
+                                            if(optimize_lambda){
+                                              lvp <- local_var_1d(t_proj, resid_sq,grid_eval=lvp_grid, periodic=T)$sigma2_hat
+                                              vh <- var_het(lvp) # get coefficient of variation
+                                            }
+                                            
+                                            
+                                            list(spline = spl, X = X, tproj = t_proj, lambda = lambdas[i],
+                                                 resid_sq = resid_sq, cv = vh$cv,alphas=alphas[1:iter],
+                                                 mean_sq = fidelities[1:iter],cost_functional = lambdas[i]*alphas[1:iter] + fidelities[1:iter],
+                                                 vh_mean = vh$mean,
+                                                 vh_sd = vh$sd)
+                                          })
+  # Aggregate results and find minimizing spline
+  spline_list <- lapply(results, function(res) res$spline)
+  lambda_list <- lambdas
+  proj_list <- lapply(results, function(res) res$tproj)
+  alpha_list <- lapply(results, function(res) res$alphas)
+  mean_sq_list <- lapply(results, function(res) res$mean_sq)
+  cost_functional_list <- lapply(results, function(res) res$cost_functional)
+  
+  list_return <- list(spline_list = spline_list, lambda_list = lambda_list, proj_list=proj_list,
+                      alpha_list = alpha_list, mean_sq_list = mean_sq_list,
+                      cost_functional_list = cost_functional_list, dataset=data)
+  
+  
+  # If optimize lambda true, add optimal spline by cv.
+  # also add cv list for reference
+  if(optimize_lambda){
+    cv_list <- sapply(results, function(res) res$cv)
+    vh_mean_list <- sapply(results, function(res) res$vh_mean)
+    vh_sd_list <- sapply(results, function(res) res$vh_sd)
+    
+    min_ind <- which.min(cv_list)
+    list_return$spline_optimal = spline_list[[min_ind]]
+    list_return$lambda_optimal = lambda_list[min_ind]
+    list_return$cv = cbind(lambda = lambdas, cv = cv_list)
+    list_return$vh_mean = cbind(lambda = lambdas, vh_mean = vh_mean_list)
+    list_return$vh_sd = cbind(lambda = lambdas, vh_sd = vh_sd_list)
+  }
+  # Return list structure
+  #list_return <- list(spline_optimal = spline_list[[min_ind]], lambda_optimal = lambda_list[min_ind],
+  #  spline_list = spline_list, lambda_list = lambda_list, cv_list = cv_list)
+  
+  
+  # stop the cluster
+  on.exit({
+    if (stop_after) parallel::stopCluster(cl)
+  }, add = TRUE)
+  
+  
+  list_return$template <- "S1"
+  list_return$D <- D
+  class(list_return) <- "cpme"
+  
+  return(list_return)
+}
+```
+
+
+## 2d Sphere Functions
+
+### Kernel Smoothing
+
+```{r}
+#'  Compute smoothed residuals using kernel smoothing, 2d CASE
+#'  @param Z projection indices (vectors in R3)
+#'  @param resid_sq residual values
+#'  @param eval_size grid size for smoothing
+#'  @param bw_grid interval size for searching for optimal bandwidth
+#'  @return A list consisting of the evaluation grid, the fitted residuals, and the bandwidth.
+local_var_2d <- function(Z, resid_sq, eval_size = 1000,bw_grid = 100) {
+  xriem <- wrap.sphere(Z) # turn our dependent variable to riemann sphere object
+  
+  # bws <- seq(from = 0, to = 1, length.out= grid_eval)[-1]# get set of bandwidths to test
+  bws <- seq(from = 0.1, to = 1, length.out= bw_grid) # bw too small results in NA
+  
+  intrin <- riem.m2skregCV(xriem, resid_sq, geometry="intrinsic", bandwidths =bws)
+  extrin <- riem.m2skregCV(xriem, resid_sq, geometry="extrinsic",bandwidths =bws)
+  
+  # Predictions on new set
+  xnew <- wrap.sphere(fibonaccisphere(eval_size)) # evenly spaced sphere points
+  
+  # Get smoothed results
+  smooth_i <- predict(intrin, xnew)
+  smooth_e <- predict(extrin, xnew)
+  
+  # return CV and bandwidth
+  list(s2_intrin =  smooth_i, bw_intrin = intrin$bandwidth,
+       s2_extrin = smooth_e, bw_extrin = extrin$bandwidth)
+}
+
+
+#' Circular distances between a single vector and every other vector in a matrix
+#' @param x_new A vector denoting a new data point
+#' @param x_data The dataset
+#' @returns A vector of distances between the vector to each row of the matrix using a circular geodesic
+d_circ_vec <- function(x_new, x_data) {
+  # x_new: vector (length d)
+  # x_data: matrix n_train x d
+  dots <- as.vector(x_data %*% x_new)  # fast matrix multiply in R
+  pmax(pmin(dots,1),-1) |> acos()
+}
+
+#' Implements the pelletier kernel using Gaussian kernel
+#' @param x_news New x values to evaluate at
+#' @param x_data The x data (projection indices)
+#' @param y_data The y data (residuals)
+#' @returns Estimated y values at the `x_news` values.
+#' @references
+#' Pelletier, B. (2006). Non-parametric regression estimation on closed Riemannian manifolds. Journal of Nonparametric Statistics, 18(1), 57-67.
+pelletier_kernel <- function(x_news, x_data, y_data, h) {
+  sapply(1:nrow(x_news), function(i){
+    rho <- d_circ_vec(x_news[i,], x_data)
+    k <- dnorm(rho / h)*ifelse(rho<1e-16, 1, rho/sin(rho))
+    sum(k * y_data) / sum(k)
+  })
+}
+
+```
+
+
+### RKs
+
+Reproducing kernels for the sphere.
+
+```{r}
+#'  qm helper function
+#'  @param z The scalar value of some inner product
+qm <- function(z){
+    # if z>=1, issue
+    # gpt suggestion. z forced to be between -1 and 1e-12
+    z <- pmin(pmax(z,-1), 1-1e-12)
+    zinv <- 1-z
+    0.5*(log(1+sqrt(2/zinv))*( 3*zinv^2 - 2*zinv)-
+           12*(zinv/2)^(1.5) + 6*(zinv/2)+1)
+}
+
+#' Another helper function for the sphere kernel
+#' @param z The scalar value of some inner product
+expr <- function(z) { 1/(4*pi) *(qm(z) - 1/3)}
+
+
+#' Reproducing kernel for the sphere
+#' @param v1 Vector
+#' @param v2 Another vector
+Rpp <- function(v1,v2){
+  expr(sum(v1*v2))
+} 
+```
+
+### Projections
+
+We require a specific method of projection for the sphere. See section C.2 Computing Projection Indices in the main text for details.
+
+```{r}
+#' Computing projection indices for the spherical data case
+#' @param X Nx3 data matrix, where N is the number of observations
+#' @param f The function to optimize over. Usually a spline fit
+#' @param init An N-vector consisting of initial values for the optimizing search
+ project_optimize2 <- function(X, f, init) {
+    param_return <- matrix(0, nrow = nrow(X), ncol = 2)
+    
+    init_sph <- pracma::cart2sph(init)[,-3]
+    
+    objective <- function(param,Xi) {
+      input <- matrix(param, ncol=2)
+      input_cart <- pracma::sph2cart(cbind(input, 1))
+      sum((Xi - f(input_cart)  )^2  )
+    }
+    
+    for (i in 1:nrow(X)) {
+      nl <- nlm(objective, init_sph[i,], Xi=X[i,])$estimate
+      param_return[i,] <- nl
+    }
+    pracma::sph2cart(cbind(param_return, 1))
+ }
+
+
+#' Sampling points on fibonacci sphere. Adapted from CoolTools library. Taken from github to avoid loading unnecessary functions
+#' @param n sample size
+#' @param r radius
+fibonaccisphere = function(n=1000, r=1) {
+  
+  if (n<1 | round(n)!=n) stop('n must be a positive integer')
+  
+  goldenratio = (1+sqrt(5))/2
+  i = seq(n)-0.5
+  z = 1-2*i/n # z-coordinate for unit sphere
+  theta = acos(pmax(-1,pmin(1,z))) # polar angle
+  phi = (2*pi*i/goldenratio)%%(2*pi)
+  
+  x = r*sin(theta)*cos(phi)
+  y = r*sin(theta)*sin(phi)
+  z = r*z
+  out = cbind(x=x,y=y,z=z)
+  
+  return(out)
+  
+}
+```
+
+
+### Splines
+
+```{r}
+#' Spline on the sphere
+#' @param data An Nx3 data matrix
+#' @param Tt An Nx3 projection index matrix. Each observation (row) is a vector parameterizing the location on the sphere S2 as opposed to longitude and latitude.
+#' @param lambda The smoothing parameter. Real number greater than 0
+#' @export
+   spline2d <- function(data,Tt, lambda){
+    n <- nrow(data)
+  #Form R kernel matrix (chatgpt)
+    # Normalize rows of data
+    #Znorm <- data / sqrt(rowSums(data^2))  # n x 3
+    #Tt <- scale(Tt,scale=F)
+    Znorm <- Tt / sqrt(rowSums(Tt^2))
+    # Compute all pairwise cos(gamma) = dot products
+    cosGamma <- Znorm %*% t(Znorm)  # n x n
+    
+    #View(cosGamma)
+    # Apply kernel function to all pairs at once
+    Rmat2 <- matrix(0, nrow=n, ncol=n)
+    # Diagonal: limit value
+    diag(Rmat2) <- 1/(24*pi)
+    
+    # Off-diagonal: apply expr to all non-diagonal entries
+    diag(cosGamma) <- NA  # ignore diagonal
+    Rmat2[!is.na(cosGamma)] <- expr(cosGamma[!is.na(cosGamma)])
+    
+    #============== Precompute matrices
+    m <- 2
+    r <- 0:m
+    Tmat <- ones(n,1)
+    M <- Rmat2 + n * lambda * eye(n)
+    Minv <- solve(M)
+    
+    # constant part
+    const_factor <- solve( t(Tmat) %*% Minv %*% Tmat) %*% t(Tmat) %*% Minv %*% data
+    coeffs <- Minv %*% (data - Tmat %*% const_factor) 
+    
+    
+    #================== Return spline function
+    f_eval_fast <- function(Pnew) {
+      Pnew <- matrix(Pnew,ncol=3)
+      
+      # normalize rows
+      Pnew_norm <- Pnew / sqrt(rowSums(Pnew^2))
+      Z_norm <- Tt / sqrt(rowSums(Tt^2))
+      
+      # compute all pairwise dot products (m x n)
+      cosGamma <- Pnew_norm %*% t(Z_norm)
+      
+      # apply kernel function elementwise
+      # cosGamms is all dot products. We evaluate R kernel separately whether
+      # cosGamma is 1 or not
+      Rnew <- cosGamma
+      oneloc <- which(cosGamma>=1, arr.ind=T)
+      cloc <- which(cosGamma < 1, arr.ind=T)
+      Rnew[oneloc] <- 1/(24*pi)
+      Rnew[cloc] <- expr(Rnew[cloc])
+      #new
+      
+      #Rnew <- expr(cosGamma)
+      # evaluate spline
+      Rnew %*% coeffs + matrix(rep(const_factor, each = nrow(Pnew)), nrow = nrow(Pnew))
+    }
+    
+    # add penalty attribute
+    attr(f_eval_fast, "alpha") <-sum(diag(t(coeffs) %*% Rmat2 %*% coeffs))
+    # Return function
+    f_eval_fast
+    
+    #return(Rmat2)
+  }
+```
+
+### PME Algorithm for S2
+```{r}
+#' # The spline fit for the 1d Interval
+#' 
+#' @param data an Nx3 data matrix where N is the number of observations
+#' @param lambdas A numeric vector of lambda values where we will perform a spline fit on. Lambda values typically are in the range of 1e-12 to 1e-2 for interpolation and for limiting lambda form respectively.
+#' @param min_iter the minimum number of total iterations of PME. Default is 1 for speed, but choosing a higher number is useful if you want to visualize the cost function.
+#' @param max_iter the maximum number of iterations of PME. Prevents the algorithm from stalling.
+#' @param err_tol error tolerance for convergence of the algorithm. Lower values result in longer runtimes, and more likely to hit the maximum iteration cap.
+#' @param optimize_lambda whether or not to perform the method of section 5, Tuning Parameter Selection. If true, additional values will be returned, being the coefficient of variation at each lambda, along with the mean residual and standard deviation residual used to calculate it.
+#' @param lvp_grid The number denoting the size of the grid used for kernel smoothing for the tuning parameter selection. If left as NULL, it will choose a grid of 10 times the sample size.
+#' #' @param cl A a makeCluster object for parallelization. For most cases, should be left null so that a new cluster is made upon runtime.
+#' @param parallel whether or not to run the algorithm parallel. The algorithm will be parallelized with respect to lambda and is recommended if your lambdas vector contains many values. Not recommended for only a handful of lamda values unless your dataset is large.
+#' @param k_init The starting value for a search of the ISOMAP nearest neighbor parameter k. Our method is to find the smallest such k such that the ISOMAP graph is connected, as detailed in the iso_try function. The default is 1 to find the smallest possible.
+#' @param approx whether or not to use the approximate spline method. We recommend to set this to be TRUE for very large lambda vectors and or very large sample sizes.
+#' @export
+#' @importFrom foreach %dopar% %do%
+pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_lambda=F, err_tol = 0.01,parallel=F, cl = NULL, init_iso=F,k_init =10,
+                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1) {
+    # Setup data and perform isomap to get initial parameterization
+    X <- data
+    m <- 2
+    if(init_iso){
+      isores <- iso_try(X, k_init,3)
+      iso3 <- isores$iso
+      print(paste0("k is ", toString(isores$k)))
+
+      t3 <- scale(iso3$points,scale=F)
+      Znorm <-t3 / sqrt(rowSums(t3^2))
+    }else{
+      datac <- scale(X,scale=F)
+      Znorm <- datac / sqrt(rowSums(datac^2))
+    }
+    # Setup cluster if not provided
+    
+    stop_after <- FALSE
+    if (is.null(cl) && parallel) {
+      numCores <- parallel::detectCores() - 1
+      cl <- parallel::makeCluster(numCores)
+      doParallel::registerDoParallel(cl)
+      stop_after <- TRUE
+    }
+    # run parallel? T or F
+    operator <- if(parallel) `%dopar%` else `%do%`
+    
+    
+    # Parallel loop over lambdas
+    results <- operator( foreach::foreach(i = 1:length(lambdas), 
+                                 .packages = c("stats", "pracma", "cooltools","Riemann"),
+                                 .export = c("spline2d","project_optimize2",
+                                             "spline_error","qm","expr","Rpp","m", "local_var_2d", "var_het",
+                                             "d_circ_vec","pelletier_kernel")), {
+                                               
+                                               Xi <- X
+                                               Znorm_i <- Znorm
+                                               
+                                               lambda <- lambdas[i]
+                                               
+                                               # First spline
+                                               #splines <- list()
+                                               alphas <-rep(0,max_iter)
+                                               spl <- spline2d(Xi, Znorm_i, lambda)
+                                               alphas[1] <- attr(spl, "alpha")
+                                               projection <- project_optimize2(Xi, spl, Znorm_i)
+                                               
+                                               # Iterative refinement
+                                               err <- err_tol + 1
+                                               iter <- 1
+                                               fidelities <- rep(Inf, max_iter)
+                                               fidelities[iter] <- spline_error(Xi, projection, spl)
+                                               
+                                               #t1 <- proc.time()
+                                               while( (err > err_tol || iter < min_iter) &&  iter < max_iter){
+                                                 iter <- iter + 1
+                                                 spl <- spline2d(Xi, projection, lambda)
+                                                 alphas[iter] <- attr(spl, "alpha")
+                                                 projection <- project_optimize2(Xi, spl, projection)
+                                                 fidelities[iter] <- sum( rowSums((Xi - spl(projection))^2))
+                                                 err <- abs((fidelities[iter] - fidelities[iter - 1]) / fidelities[iter - 1])
+                                               }
+                                               
+                                               #print(paste0("Lambda ", toString(lambda), ": iteration time: ",toString(proc.time()-t1)))
+                                               
+                                            
+                                               resid_sq <- rowSums( (X - spl(projection))^2)
+                                               
+                                               # Compute variance heterogeneity, intrinsic and extrinsic
+                                               #t1 <- proc.time()
+                                               lvp <- NULL
+                                               vhi <- NULL
+                                               vhe <- NULL
+                                               vhp <-NULL
+                                               
+                                               # If optimizing lambda, perform variance heterogeneity routine
+                                               if(optimize_lambda){
+                                                 lvp <- local_var_2d(projection, resid_sq, eval_size=resid_smooth_size, bw_grid=bw_grid)
+                                                 lv_pelletier <- pelletier_kernel(fibonaccisphere(resid_smooth_size),
+                                                                                  projection, resid_sq, pelletier_bw)
+                                                 #print(lv_pelletier)
+                                                 # Get coefficient of variation
+                                                 vhi <- var_het(lvp$s2_intrin) # get coefficient of variation
+                                                 vhe <- var_het(lvp$s2_extrin) 
+                                                 vhp <- var_het(lv_pelletier)
+                                               }
+                                               
+                                               
+                                               list(spline = spl, tproj = projection, lambda = lambdas[i],
+                                                    resid_sq = resid_sq, cv_intrinsic = vhi$cv, cv_extrinsic = vhe$cv, cv_pelletier = vhp$cv, 
+                                                    mean_intrinsic = vhi$mean, mean_extrinsic = vhe$mean, mean_pelletier = vhp$mean,
+                                                    sd_intrinsic = vhi$sd, sd_extrinsic = vhe$sd, sd_pelletier = vhp$sd,
+                                                    bw_intrinsic =  lvp$bw_intrin, bw_extrinsic = lvp$bw_extrin, bw_pelletier = pelletier_bw,
+                                                    alphas=alphas[1:iter], mean_sq = fidelities[1:iter],
+                                                    cost_functional = lambdas[i]*alphas[1:iter] + fidelities[1:iter])
+                                             })
+    
+ 
+    
+    # Aggregate results and find minimizing spline
+    spline_list <- lapply(results, function(res) res$spline)
+    lambda_list <- lambdas
+    proj_list <- lapply(results, function(res) res$tproj)
+    resid_sq_list <- lapply(results, function(res) res$resid_sq)
+    cost_functional_list <- lapply(results, function(res) res$cost_functional)
+    
+    alpha_list <- lapply(results, function(res) res$alphas)
+    mean_sq_list <- lapply(results, function(res) res$mean_sq)
+    
+    
+    list_return <- list(spline_list = spline_list, proj_list = proj_list, resid_sq_list = resid_sq_list, lambda_list = lambda_list,
+                        alpha_list = alpha_list, mean_sq_list = mean_sq_list,
+                        cost_functional_list = cost_functional_list,dataset=data)
+    
+    # If we optimize lambda, add optimal spline data
+    if(optimize_lambda){
+      
+      # intrinsic
+      cvi_list   <- sapply(results, function(res) res$cv_intrinsic)
+      meani_list <- sapply(results, function(res) res$mean_intrinsic)
+      sdi_list   <- sapply(results, function(res) res$sd_intrinsic)
+      
+      # extrinsic
+      cve_list   <- sapply(results, function(res) res$cv_extrinsic)
+      meane_list <- sapply(results, function(res) res$mean_extrinsic)
+      sde_list   <- sapply(results, function(res) res$sd_extrinsic)
+      
+      # pelletier
+      cvp_list   <- sapply(results, function(res) res$cv_pelletier)
+      meanp_list <- sapply(results, function(res) res$mean_pelletier)
+      sdp_list   <- sapply(results, function(res) res$sd_pelletier)
+      
+      
+      # which spline minimizes CV?
+      mini_ind <- which.min(cvi_list)
+      mine_ind <- which.min(cve_list)
+      minp_ind <- which.min(cvp_list)
+      
+      
+      # store optimal splines
+      list_return$spline_optimal_intrinsic  <- spline_list[[mini_ind]]
+      list_return$lambda_optimal_intrinsic  <- lambda_list[mini_ind]
+      
+      list_return$spline_optimal_extrinsic  <- spline_list[[mine_ind]]
+      list_return$lambda_optimal_extrinsic  <- lambda_list[mine_ind]
+      
+      list_return$spline_optimal_pelletier  <- spline_list[[minp_ind]]
+      list_return$lambda_optimal_pelletier  <- lambda_list[minp_ind]
+      
+      list_return$cv <- cbind(
+        lambda     = lambda_list,
+        intrinsic  = cvi_list,
+        extrinsic  = cve_list,
+        pelletier  = cvp_list
+      )
+      
+      list_return$mean <- cbind(
+        lambda     = lambda_list,
+        intrinsic  = meani_list,
+        extrinsic  = meane_list,
+        pelletier  = meanp_list
+      )
+      
+      list_return$sd <- cbind(
+        lambda     = lambda_list,
+        intrinsic  = sdi_list,
+        extrinsic  = sde_list,
+        pelletier  = sdp_list
+      )
+      
+    }
+    
+    # stop the cluster
+    on.exit({
+      if (stop_after) parallel::stopCluster(cl)
+    }, add = TRUE)
+    
+  list_return$template <- "S2"
+  list_return$D <- D
+  class(list_return) <- "cpme"
+    
+    return(list_return)
+  }
+```
+
+
+
+## Plotting Functionality
+
+
+```{r}
+#' Plotting function
+#' @param fit A CPME object
+#' @export
+plot.cpme <- function(fit){
+  
+  template <- fit$template
+  
+  if(template == "interval" || template == "S1"){
+    S <- seq(0,1,length.out=1000)
+    plot_1d(fit, S)
+  }
+  else if(template =="S2"){
+    S <- fibonaccisphere(1000)
+    plot_2d(fit,S)
+  }
+  else{
+    stop("Invalid template.")
+  }
+}
+
+#' Plotting helper that calls the right function for 1d case
+#' @param fit A CPME object
+#' @param S The parameterization. A vector of numbers between 0 and 1 for interval and S1. kx3 vectors in R3 where k is the desired fidelity
+#' @return A plotly object
+plot_1d <- function(fit,S){
+  
+  data <- fit$dataset
+  D <- fit$D
+  
+  # Start base plot with data points
+  p <- plotly::yplot_ly()
+  
+  
+  if(D == 2){
+    p <- p |> plotly::add_trace(
+      x = data[, 1], y = data[, 2],
+      type = "scatter",
+      mode = "markers",
+      marker = list(size = 3, opacity = 0.7, color="black"),
+      name = "Data points"
+    )
+  }else if(D==3){
+    
+    p <- p |> plotly::add_trace(
+      x = data[, 1], y = data[, 2], z = data[, 3],
+      type = "scatter3d",
+      mode = "markers",
+      marker = list(size = 3, opacity = 0.7,color="black"),
+      name = "Data points"
+    )
+    
+  }
+  
+  # Loop through each fit and add its corresponding line
+  for (i in seq_along(fit$spline_list)) {
+    spl <- fit$spline_list[[i]]
+    splinevis <- spl(S)
+    lambda <- fit$lambda_list[i]
+    label <- paste0("λ = ", formatC( fit$lambda_list[i],format="e",digits=2))
+    
+    if(D == 2){
+      p <- p |> plotly::add_trace(
+        x = splinevis[, 1], y = splinevis[, 2],
+        type = "scatter",
+        mode = "lines",
+        marker = list(size = 2, opacity = 0.7),
+        name = label
+      )
+    }else if(D==3){
+      
+      p <- p |> plotly::add_trace(
+        x = splinevis[, 1], y = splinevis[, 2], z = splinevis[, 3],
+        type = "scatter3d",
+        mode = "lines",
+        marker = list(size = 2, opacity = 0.7),
+        name = label
+      )
+      
+    }
+  }
+  
+  return(p)
+  
+}
+
+
+#' Helper for generating a surface
+#' @param f A spline function
+#' @return A `list` of evaluation matrices
+genSurface <- function(f){
+  M <- 50
+  thetas <- seq(from = 0, to = 2*pi, length.out=M)
+  phis <- seq(from =-pi/2, to = pi/2, length.out=M)
+  rr <- 1
+  grid <- expand.grid(thetas,phis,1)
+  cartgrid <- t(apply(grid, 1, pracma::sph2cart))
+  
+  # Evaluate manifold
+  fvalues <- f(cartgrid)
+  
+  Xmat <- matrix(fvalues[,1], nrow = M, ncol = M, byrow = TRUE)
+  Ymat <- matrix(fvalues[,2], nrow = M, ncol = M, byrow = TRUE)
+  Zmat <- matrix(fvalues[,3], nrow = M, ncol = M, byrow = TRUE)
+  
+  list(X=Xmat,Y=Ymat,Z=Zmat)
+}
+
+
+#' Helper for plotting a 2d surface
+#' @param fit A CPME object
+#' @param S a kx3 `matrix` consisting of k-many vectors in R3, denoting the evaluation points of the spline
+#' @return Returns a `list` containing plotly objects
+plot_2d <- function(fit,S){
+  
+  data <- fit$dataset
+  plot_list <- vector("list", length=length(fit$spline_list))
+ 
+  for (i in seq_along(fit$spline_list)) {
+    
+    # Get spline
+    spl <- fit$spline_list[[i]]
+    
+    # Get surface
+    surf <- genSurface(spl)
+    
+    lambda <- fit$lambda_list[i]
+    label <- paste0("λ = ", formatC( fit$lambda_list[i],format="e",digits=2))
+    
+     plot_list[[i]] <- plotly::plot_ly() %>%
+    # Scatter points trace
+    plotly::add_markers(x = data[, 1],y = data[, 2], z = data[, 3],
+              type = "scatter3d",
+              mode = "markers",
+              marker = list(size = 2,opacity=0.7, color ="black"),
+              name = "Data points"
+    ) %>%
+    # Overlay line trace
+    plotly::add_surface(x=surf[[1]],y=surf[[2]], z=surf[[3]], opacity = 0.3,showscale=F,colorscale="Viridis")|>
+    plotly::layout(title = paste0("λ = ", formatC( fit$lambda_list[i],format="e",digits=2)),
+           scene = list(
+             xaxis = list(title = "X"),
+             yaxis = list(title = "Y"),
+             zaxis = list(title = "Z")
+           ))
+  }
+
+  plot_list
+  
+}
+```
+
+
+
+## Documenting the package and building
+
+We finish by running commands that will document, build, and install the package.  It may also be a good idea to check the package from within this file.
+
+```{r}
+litr::document() # <-- use instead of devtools::document()
+# devtools::build()
+# devtools::install()
+# devtools::check(document = FALSE)
+```
+

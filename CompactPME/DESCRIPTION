@@ -1,0 +1,22 @@
+Package: CompactPME
+Title: Compact Principal Manifold Estimation
+Version: 0.0.1
+Authors@R: 
+    person("Christopher", "Perez", , "cmp23b@fsu.edu", role = c("aut", "cre"))
+Description: Sample description.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports: 
+    doParallel,
+    dplyr,
+    foreach,
+    ggplot2,
+    plotly,
+    pracma,
+    Riemann,
+    splines,
+    vegan
+LitrVersionUsed: 0.9.3
+LitrId: f5f52397066c804e4864588d663b2325
