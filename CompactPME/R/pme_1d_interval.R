@@ -24,7 +24,7 @@
 #' @importFrom splines splineDesign
 pme_1d_interval <- function(data, lambdas, gridSize = 1000, min_iter=1, max_iter = 10, optimize_lambda=F,
                                   err_tol=0.01,lvp_grid=NULL, cl=NULL,parallel=F, k_init = 1,
-                                  approx=F)
+                                  approx=F,eps_adj=1e-14)
 {
   n <- nrow(data)
   X <- data
@@ -116,7 +116,7 @@ pme_1d_interval <- function(data, lambdas, gridSize = 1000, min_iter=1, max_iter
                                             vh <- NULL
                                             if(optimize_lambda){
                                               lvp <- local_var_1d(t_proj, resid_sq,grid_eval=lvp_grid)$sigma2_hat
-                                              vh <- var_het(lvp) # get coefficient of variation
+                                              vh <- var_het(lvp, eps_adj) # get coefficient of variation
                                             }
                                             
                                             
@@ -168,4 +168,11 @@ pme_1d_interval <- function(data, lambdas, gridSize = 1000, min_iter=1, max_iter
   class(list_return) <- "cpme"
   
   return(list_return)
+}
+
+sine1d2D <- function(n, rotation=0, period=2*pi, noise=0, tval){
+  t0 <- if(missing(tval)) sort(runif(n)) else tval
+  
+  list(X=cbind(t0, sin(period*t0)) %*% t(rotation2(rotation)) + rnorm(2*n, sd=noise),
+       t = t0)
 }

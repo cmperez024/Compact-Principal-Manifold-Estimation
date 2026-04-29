@@ -18,7 +18,8 @@ pme_1d_periodic(
   parallel = F,
   cl = NULL,
   lvp_grid = NULL,
-  approx = F
+  approx = F,
+  eps_adj = 1e-14
 )
 }
 \arguments{

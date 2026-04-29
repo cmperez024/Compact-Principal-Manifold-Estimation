@@ -121,10 +121,10 @@ project_optimize <- function(Xraw, res, periodic = F) {
 #' Computes variance heterogneity given the results of local_var_1d. Also used for the 2d case.
 #' @param sigma2_hat vector of smoothed MSE values
 #' @return A list consisting of the mean, standard deviation, coefficient of variation, and spread.
-var_het <- function(sigma2_hat) {
+var_het <- function(sigma2_hat,eps_adj=1e-14) {
   mean_sigma2 <- mean(sigma2_hat)
   sd_sigma2   <- sd(sigma2_hat)
-  cv          <- sd_sigma2 / (mean_sigma2 + 1e-12)  # coefficient of variation
+  cv          <- sd_sigma2 / (mean_sigma2 + eps_adj)  # coefficient of variation
   spread      <- max(sigma2_hat) - min(sigma2_hat)
   list(mean = mean_sigma2, sd = sd_sigma2, cv = cv, spread = spread)
 }
@@ -376,7 +376,7 @@ spline1d_interval_approx <- function(X,t,lambda){
 #' @importFrom splines splineDesign
 pme_1d_interval <- function(data, lambdas, gridSize = 1000, min_iter=1, max_iter = 10, optimize_lambda=F,
                                   err_tol=0.01,lvp_grid=NULL, cl=NULL,parallel=F, k_init = 1,
-                                  approx=F)
+                                  approx=F,eps_adj=1e-14)
 {
   n <- nrow(data)
   X <- data
@@ -468,7 +468,7 @@ pme_1d_interval <- function(data, lambdas, gridSize = 1000, min_iter=1, max_iter
                                             vh <- NULL
                                             if(optimize_lambda){
                                               lvp <- local_var_1d(t_proj, resid_sq,grid_eval=lvp_grid)$sigma2_hat
-                                              vh <- var_het(lvp) # get coefficient of variation
+                                              vh <- var_het(lvp, eps_adj) # get coefficient of variation
                                             }
                                             
                                             
@@ -520,6 +520,13 @@ pme_1d_interval <- function(data, lambdas, gridSize = 1000, min_iter=1, max_iter
   class(list_return) <- "cpme"
   
   return(list_return)
+}
+
+sine1d2D <- function(n, rotation=0, period=2*pi, noise=0, tval){
+  t0 <- if(missing(tval)) sort(runif(n)) else tval
+  
+  list(X=cbind(t0, sin(period*t0)) %*% t(rotation2(rotation)) + rnorm(2*n, sd=noise),
+       t = t0)
 }
 ```
 
@@ -680,7 +687,7 @@ The main PME algorithm for the 1d circle case.
 #' @export
 #' @importFrom foreach %dopar% %do%
 pme_1d_periodic <- function(data, lambdas, method = "grid", gridSize = 1000,  min_iter=1, max_iter = 10, err_tol=0.01, k_init = 1,init_iso = F, optimize_lambda=F,
-                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F)
+                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F, eps_adj=1e-14)
 {
   n <- nrow(data)
   X <- data
@@ -800,7 +807,7 @@ pme_1d_periodic <- function(data, lambdas, method = "grid", gridSize = 1000,  mi
                                             vh <- NULL
                                             if(optimize_lambda){
                                               lvp <- local_var_1d(t_proj, resid_sq,grid_eval=lvp_grid, periodic=T)$sigma2_hat
-                                              vh <- var_het(lvp) # get coefficient of variation
+                                              vh <- var_het(lvp,eps_adj) # get coefficient of variation
                                             }
                                             
                                             
@@ -1093,7 +1100,7 @@ fibonaccisphere = function(n=1000, r=1) {
 #' @export
 #' @importFrom foreach %dopar% %do%
 pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_lambda=F, err_tol = 0.01,parallel=F, cl = NULL, init_iso=F,k_init =10,
-                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1) {
+                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1, eps_adj=1e-14) {
     # Setup data and perform isomap to get initial parameterization
     X <- data
     m <- 2
@@ -1175,9 +1182,9 @@ pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_l
                                                                                   projection, resid_sq, pelletier_bw)
                                                  #print(lv_pelletier)
                                                  # Get coefficient of variation
-                                                 vhi <- var_het(lvp$s2_intrin) # get coefficient of variation
-                                                 vhe <- var_het(lvp$s2_extrin) 
-                                                 vhp <- var_het(lv_pelletier)
+                                                 vhi <- var_het(lvp$s2_intrin,eps_adj) # get coefficient of variation
+                                                 vhe <- var_het(lvp$s2_extrin,eps_adj) 
+                                                 vhp <- var_het(lv_pelletier,eps_adj)
                                                }
                                                
                                                

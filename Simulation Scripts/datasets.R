@@ -236,6 +236,40 @@ spiral1d2D_arclength <- function(n, period = 4*pi, scale = 1, noise = 0){
   list(X = X, t = t_star)
 }
 
+spiral1d3D_arclength <- function(n, period = 4*pi, scale = 1, noise = 0){
+  
+  omega <- period
+  
+  # arc length function
+  s_fun <- function(t){
+    0.5 * t * sqrt(1 + omega^2 * t^2) +
+      asinh(omega * t) / (2 * omega)
+  }
+  
+  # total length
+  L <- s_fun(1)
+  
+  # sample uniformly in arc length
+  s_star <- sort(runif(n, 0, L))
+  
+  # invert numerically
+  t_star <- sapply(s_star, function(s_target){
+    uniroot(function(t) s_fun(t) - s_target,
+            interval = c(0,1))$root
+  })
+  
+  # evaluate curve
+  X <- cbind(scale * t_star * cos(omega * t_star),
+             scale * t_star * sin(omega * t_star))
+  
+  # add noise
+  if(noise > 0){
+    X <- X + matrix(rnorm(2*n, sd=noise), ncol=2)
+  }
+  
+  list(X = cbind(X, scale*t_star), t = t_star)
+}
+
 
 sine1d3D <- function(n, rotation=0, period=2*pi, noise=0, tval){
   t0 <- if(missing(tval)) sort(runif(n)) else tval

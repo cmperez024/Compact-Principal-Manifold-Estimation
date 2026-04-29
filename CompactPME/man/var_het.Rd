@@ -4,7 +4,7 @@
 \alias{var_het}
 \title{Computes variance heterogneity given the results of local_var_1d. Also used for the 2d case.}
 \usage{
-var_het(sigma2_hat)
+var_het(sigma2_hat, eps_adj = 1e-14)
 }
 \arguments{
 \item{sigma2_hat}{vector of smoothed MSE values}

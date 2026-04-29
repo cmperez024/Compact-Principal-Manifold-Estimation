@@ -16,7 +16,7 @@
 #' @export
 #' @importFrom foreach %dopar% %do%
 pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_lambda=F, err_tol = 0.01,parallel=F, cl = NULL, init_iso=F,k_init =10,
-                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1) {
+                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1, eps_adj=1e-14) {
     # Setup data and perform isomap to get initial parameterization
     X <- data
     m <- 2
@@ -98,9 +98,9 @@ pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_l
                                                                                   projection, resid_sq, pelletier_bw)
                                                  #print(lv_pelletier)
                                                  # Get coefficient of variation
-                                                 vhi <- var_het(lvp$s2_intrin) # get coefficient of variation
-                                                 vhe <- var_het(lvp$s2_extrin) 
-                                                 vhp <- var_het(lv_pelletier)
+                                                 vhi <- var_het(lvp$s2_intrin,eps_adj) # get coefficient of variation
+                                                 vhe <- var_het(lvp$s2_extrin,eps_adj) 
+                                                 vhp <- var_het(lv_pelletier,eps_adj)
                                                }
                                                
                                                

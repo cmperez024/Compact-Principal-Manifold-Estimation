@@ -427,10 +427,10 @@ usethis::use_mit_license(copyright_holder = "C. Perez")</code></pre>
 <pre class="r"><code>#' Computes variance heterogneity given the results of local_var_1d. Also used for the 2d case.
 #' @param sigma2_hat vector of smoothed MSE values
 #' @return A list consisting of the mean, standard deviation, coefficient of variation, and spread.
-<span id="var_het">var_het</span> &lt;- function(sigma2_hat) {
+<span id="var_het">var_het</span> &lt;- function(sigma2_hat,eps_adj=1e-14) {
   mean_sigma2 &lt;- mean(sigma2_hat)
   sd_sigma2   &lt;- sd(sigma2_hat)
-  cv          &lt;- sd_sigma2 / (mean_sigma2 + 1e-12)  # coefficient of variation
+  cv          &lt;- sd_sigma2 / (mean_sigma2 + eps_adj)  # coefficient of variation
   spread      &lt;- max(sigma2_hat) - min(sigma2_hat)
   list(mean = mean_sigma2, sd = sd_sigma2, cv = cv, spread = spread)
 }
@@ -672,7 +672,7 @@ approximate method utilizing external packages.</p>
 #' @importFrom splines splineDesign
 <span id="pme_1d_interval">pme_1d_interval</span> &lt;- function(data, lambdas, gridSize = 1000, min_iter=1, max_iter = 10, optimize_lambda=F,
                                   err_tol=0.01,lvp_grid=NULL, cl=NULL,parallel=F, k_init = 1,
-                                  approx=F)
+                                  approx=F,eps_adj=1e-14)
 {
   n &lt;- nrow(data)
   X &lt;- data
@@ -764,7 +764,7 @@ approximate method utilizing external packages.</p>
                                             vh &lt;- NULL
                                             if(optimize_lambda){
                                               lvp &lt;- <a href="create-CompactPME.html#local_var_1d">local_var_1d</a>(t_proj, resid_sq,grid_eval=lvp_grid)$sigma2_hat
-                                              vh &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp) # get coefficient of variation
+                                              vh &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp, eps_adj) # get coefficient of variation
                                             }
                                             
                                             
@@ -816,6 +816,13 @@ approximate method utilizing external packages.</p>
   class(list_return) &lt;- "cpme"
   
   return(list_return)
+}
+
+<span id="sine1d2D">sine1d2D</span> &lt;- function(n, rotation=0, period=2*pi, noise=0, tval){
+  t0 &lt;- if(missing(tval)) sort(runif(n)) else tval
+  
+  list(X=cbind(t0, sin(period*t0)) %*% t(rotation2(rotation)) + rnorm(2*n, sd=noise),
+       t = t0)
 }</code></pre>
 </div>
 </div>
@@ -964,7 +971,7 @@ approximate method utilizing external packages.</p>
 #' @export
 #' @importFrom foreach %dopar% %do%
 <span id="pme_1d_periodic">pme_1d_periodic</span> &lt;- function(data, lambdas, method = "grid", gridSize = 1000,  min_iter=1, max_iter = 10, err_tol=0.01, k_init = 1,init_iso = F, optimize_lambda=F,
-                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F)
+                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F, eps_adj=1e-14)
 {
   n &lt;- nrow(data)
   X &lt;- data
@@ -1084,7 +1091,7 @@ approximate method utilizing external packages.</p>
                                             vh &lt;- NULL
                                             if(optimize_lambda){
                                               lvp &lt;- <a href="create-CompactPME.html#local_var_1d">local_var_1d</a>(t_proj, resid_sq,grid_eval=lvp_grid, periodic=T)$sigma2_hat
-                                              vh &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp) # get coefficient of variation
+                                              vh &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp,eps_adj) # get coefficient of variation
                                             }
                                             
                                             
@@ -1366,7 +1373,7 @@ fibonaccisphere = function(n=1000, r=1) {
 #' @export
 #' @importFrom foreach %dopar% %do%
 <span id="pme_2d_periodic">pme_2d_periodic</span> &lt;- function(data, lambdas, min_iter=1, max_iter = 10, optimize_lambda=F, err_tol = 0.01,parallel=F, cl = NULL, init_iso=F,k_init =10,
-                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1) {
+                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1, eps_adj=1e-14) {
     # Setup data and perform isomap to get initial parameterization
     X &lt;- data
     m &lt;- 2
@@ -1448,9 +1455,9 @@ fibonaccisphere = function(n=1000, r=1) {
                                                                                   projection, resid_sq, pelletier_bw)
                                                  #print(lv_pelletier)
                                                  # Get coefficient of variation
-                                                 vhi &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp$s2_intrin) # get coefficient of variation
-                                                 vhe &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp$s2_extrin) 
-                                                 vhp &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lv_pelletier)
+                                                 vhi &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp$s2_intrin,eps_adj) # get coefficient of variation
+                                                 vhe &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp$s2_extrin,eps_adj) 
+                                                 vhp &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lv_pelletier,eps_adj)
                                                }
                                                
                                                

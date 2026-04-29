@@ -3,10 +3,10 @@
 #' Computes variance heterogneity given the results of local_var_1d. Also used for the 2d case.
 #' @param sigma2_hat vector of smoothed MSE values
 #' @return A list consisting of the mean, standard deviation, coefficient of variation, and spread.
-var_het <- function(sigma2_hat) {
+var_het <- function(sigma2_hat,eps_adj=1e-14) {
   mean_sigma2 <- mean(sigma2_hat)
   sd_sigma2   <- sd(sigma2_hat)
-  cv          <- sd_sigma2 / (mean_sigma2 + 1e-12)  # coefficient of variation
+  cv          <- sd_sigma2 / (mean_sigma2 + eps_adj)  # coefficient of variation
   spread      <- max(sigma2_hat) - min(sigma2_hat)
   list(mean = mean_sigma2, sd = sd_sigma2, cv = cv, spread = spread)
 }

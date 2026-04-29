@@ -16,7 +16,8 @@ pme_1d_interval(
   cl = NULL,
   parallel = F,
   k_init = 1,
-  approx = F
+  approx = F,
+  eps_adj = 1e-14
 )
 }
 \arguments{

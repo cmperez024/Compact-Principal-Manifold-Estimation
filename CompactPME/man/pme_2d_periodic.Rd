@@ -17,7 +17,8 @@ pme_2d_periodic(
   k_init = 10,
   resid_smooth_size = 1000,
   bw_grid = 1000,
-  pelletier_bw = 0.1
+  pelletier_bw = 0.1,
+  eps_adj = 1e-14
 )
 }
 \arguments{

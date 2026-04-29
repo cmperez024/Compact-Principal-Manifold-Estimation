@@ -19,7 +19,7 @@
 #' @export
 #' @importFrom foreach %dopar% %do%
 pme_1d_periodic <- function(data, lambdas, method = "grid", gridSize = 1000,  min_iter=1, max_iter = 10, err_tol=0.01, k_init = 1,init_iso = F, optimize_lambda=F,
-                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F)
+                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F, eps_adj=1e-14)
 {
   n <- nrow(data)
   X <- data
@@ -139,7 +139,7 @@ pme_1d_periodic <- function(data, lambdas, method = "grid", gridSize = 1000,  mi
                                             vh <- NULL
                                             if(optimize_lambda){
                                               lvp <- local_var_1d(t_proj, resid_sq,grid_eval=lvp_grid, periodic=T)$sigma2_hat
-                                              vh <- var_het(lvp) # get coefficient of variation
+                                              vh <- var_het(lvp,eps_adj) # get coefficient of variation
                                             }
                                             
                                             
