@@ -19,7 +19,7 @@ pme_1d_periodic(
   cl = NULL,
   lvp_grid = NULL,
   approx = F,
-  eps_adj = 1e-14
+  eps_adj = 0
 )
 }
 \arguments{
@@ -50,6 +50,8 @@ pme_1d_periodic(
 \item{lvp_grid}{The number denoting the size of the grid used for kernel smoothing for the tuning parameter selection. If left as NULL, it will choose a grid of 10 times the sample size.}
 
 \item{approx}{whether or not to use the approximate spline method. We recommend to set this to be TRUE for very large lambda vectors and or very large sample sizes.}
+
+\item{eps_adj}{epsilon factor to add to denominator of CV calculation to prevent division by 0}
 }
 \description{
 The spline fit for the 1d Interval

@@ -4,10 +4,12 @@
 \alias{var_het}
 \title{Computes variance heterogneity given the results of local_var_1d. Also used for the 2d case.}
 \usage{
-var_het(sigma2_hat, eps_adj = 1e-14)
+var_het(sigma2_hat, eps_adj = 0)
 }
 \arguments{
 \item{sigma2_hat}{vector of smoothed MSE values}
+
+\item{eps_adj}{epsilon factor to add to denominator of CV calculation to prevent division by 0}
 }
 \value{
 A list consisting of the mean, standard deviation, coefficient of variation, and spread.

@@ -347,7 +347,7 @@ usethis::use_package("pracma") # for bernoulli polynomials and spherical coordin
 usethis::use_package("vegan") # isomap
 usethis::use_package("doParallel") # parallelization
 usethis::use_package("foreach")
-usethis::use_package("Riemann") # for kernel smoothing
+#usethis::use_package("Riemann") # for kernel smoothing
 usethis::use_package("splines") # for spline approximations
 usethis::use_package("plotly") # for visualization in 3D
 usethis::use_package("dplyr") 
@@ -362,6 +362,17 @@ usethis::use_mit_license(copyright_holder = "C. Perez")</code></pre>
 <h2>General 1d Functions</h2>
 <div id="projection" class="section level3">
 <h3>Projection</h3>
+<p>There are two aspects of projection. First, there is an
+initialization projection. This is acquired using the circular
+projection method. We center the data <span class="math inline">\(\{X_i\}_{i=1}^N \subset \mathbb{R}^D\)</span> and
+then deduce each points angle along a circle. The second involves
+calculating the projection indices <span class="math inline">\(\pi_f\)</span> relative to a function <span class="math inline">\(f\)</span>. The latter function constructs a
+partition (which we refer to as a grid in the code) and calculates the
+minimizing partition element <span class="math inline">\(t \in
+\mathcal{P}[0,1]\)</span> such that <span class="math inline">\(\Vert
+X_i - f(t) \Vert\)</span> is minimized. This is done for each point
+<span class="math inline">\(X_i\)</span> The optimize routine uses
+built-in functions to minimize the norm difference over <span class="math inline">\(t\)</span>.</p>
 <pre class="r"><code>#' Circular projection, for initialization puprposes
 #' @param X A data `matrix` consisting of N rows and 2 columns
 #' @return A vector of N values between 0 and 1 denoting the circular projection index
@@ -424,10 +435,18 @@ usethis::use_mit_license(copyright_holder = "C. Perez")</code></pre>
 </div>
 <div id="kernel-smoothing" class="section level3">
 <h3>Kernel smoothing</h3>
+<p>Kernel smoothing is a step imperative for our smoothing parameter
+lection. The general steps are to do a kernel regression on the squared
+residuals by the projection index value. Then, we generate predictions
+for the residual values at new projection points to generate a dense
+grid of residuals. We can then calculate summary statistics of these
+residuals, for each <span class="math inline">\(\lambda\)</span>. In
+particular, we minimize the coefficient of variation.</p>
 <pre class="r"><code>#' Computes variance heterogneity given the results of local_var_1d. Also used for the 2d case.
 #' @param sigma2_hat vector of smoothed MSE values
+#' @param eps_adj epsilon factor to add to denominator of CV calculation to prevent division by 0
 #' @return A list consisting of the mean, standard deviation, coefficient of variation, and spread.
-<span id="var_het">var_het</span> &lt;- function(sigma2_hat,eps_adj=1e-14) {
+<span id="var_het">var_het</span> &lt;- function(sigma2_hat,eps_adj=0) {
   mean_sigma2 &lt;- mean(sigma2_hat)
   sd_sigma2   &lt;- sd(sigma2_hat)
   cv          &lt;- sd_sigma2 / (mean_sigma2 + eps_adj)  # coefficient of variation
@@ -662,6 +681,7 @@ approximate method utilizing external packages.</p>
 #' @param parallel whether or not to run the algorithm parallel. The algorithm will be parallelized with respect to lambda and is recommended if your lambdas vector contains many values. Not recommended for only a handful of lamda values unless your dataset is large.
 #' @param k_init The starting value for a search of the ISOMAP nearest neighbor parameter k. Our method is to find the smallest such k such that the ISOMAP graph is connected, as detailed in the iso_try function. The default is 1 to find the smallest possible.
 #' @param approx whether or not to use the approximate spline method. We recommend to set this to be TRUE for very large lambda vectors and or very large sample sizes.
+#' @param eps_adj epsilon factor to add to denominator of CV calculation to prevent division by 0
 #' @return A list containing
 #' \describe{
 #' \item{spline_list}{A  containing spline functions corresponding to the lambda values}
@@ -672,7 +692,7 @@ approximate method utilizing external packages.</p>
 #' @importFrom splines splineDesign
 <span id="pme_1d_interval">pme_1d_interval</span> &lt;- function(data, lambdas, gridSize = 1000, min_iter=1, max_iter = 10, optimize_lambda=F,
                                   err_tol=0.01,lvp_grid=NULL, cl=NULL,parallel=F, k_init = 1,
-                                  approx=F,eps_adj=1e-14)
+                                  approx=F,eps_adj=0)
 {
   n &lt;- nrow(data)
   X &lt;- data
@@ -968,10 +988,11 @@ approximate method utilizing external packages.</p>
 #' @param parallel whether or not to run the algorithm parallel. The algorithm will be parallelized with respect to lambda and is recommended if your lambdas vector contains many values. Not recommended for only a handful of lamda values unless your dataset is large.
 #' @param k_init The starting value for a search of the ISOMAP nearest neighbor parameter k. Our method is to find the smallest such k such that the ISOMAP graph is connected, as detailed in the iso_try function. The default is 1 to find the smallest possible.
 #' @param approx whether or not to use the approximate spline method. We recommend to set this to be TRUE for very large lambda vectors and or very large sample sizes.
+#' @param eps_adj epsilon factor to add to denominator of CV calculation to prevent division by 0
 #' @export
 #' @importFrom foreach %dopar% %do%
 <span id="pme_1d_periodic">pme_1d_periodic</span> &lt;- function(data, lambdas, method = "grid", gridSize = 1000,  min_iter=1, max_iter = 10, err_tol=0.01, k_init = 1,init_iso = F, optimize_lambda=F,
-                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F, eps_adj=1e-14)
+                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F, eps_adj=0)
 {
   n &lt;- nrow(data)
   X &lt;- data
@@ -1152,33 +1173,31 @@ approximate method utilizing external packages.</p>
 <div id="kernel-smoothing-1" class="section level3">
 <h3>Kernel Smoothing</h3>
 <pre class="r"><code>#'  Compute smoothed residuals using kernel smoothing, 2d CASE
-#'  @param Z projection indices (vectors in R3)
-#'  @param resid_sq residual values
-#'  @param eval_size grid size for smoothing
-#'  @param bw_grid interval size for searching for optimal bandwidth
-#'  @return A list consisting of the evaluation grid, the fitted residuals, and the bandwidth.
-<span id="local_var_2d">local_var_2d</span> &lt;- function(Z, resid_sq, eval_size = 1000,bw_grid = 100) {
-  xriem &lt;- wrap.sphere(Z) # turn our dependent variable to riemann sphere object
+#'  param Z projection indices (vectors in R3)
+#'  param resid_sq residual values
+#'  param eval_size grid size for smoothing
+#'  param bw_grid interval size for searching for optimal bandwidth
+#'  return A list consisting of the evaluation grid, the fitted residuals, and the bandwidth.
+#<span id="local_var_2d">local_var_2d</span> &lt;- function(Z, resid_sq, eval_size = 1000,bw_grid = 100) {
+  #xriem &lt;- wrap.sphere(Z) # turn our dependent variable to riemann sphere object
   
   # bws &lt;- seq(from = 0, to = 1, length.out= grid_eval)[-1]# get set of bandwidths to test
-  bws &lt;- seq(from = 0.1, to = 1, length.out= bw_grid) # bw too small results in NA
+  #bws &lt;- seq(from = 0.1, to = 1, length.out= bw_grid) # bw too small results in NA
   
-  intrin &lt;- riem.m2skregCV(xriem, resid_sq, geometry="intrinsic", bandwidths =bws)
-  extrin &lt;- riem.m2skregCV(xriem, resid_sq, geometry="extrinsic",bandwidths =bws)
+ # intrin &lt;- riem.m2skregCV(xriem, resid_sq, geometry="intrinsic", bandwidths =bws)
+#  extrin &lt;- riem.m2skregCV(xriem, resid_sq, geometry="extrinsic",bandwidths =bws)
   
   # Predictions on new set
-  xnew &lt;- wrap.sphere(fibonaccisphere(eval_size)) # evenly spaced sphere points
+  #xnew &lt;- wrap.sphere(fibonaccisphere(eval_size)) # evenly spaced sphere points
   
   # Get smoothed results
-  smooth_i &lt;- predict(intrin, xnew)
-  smooth_e &lt;- predict(extrin, xnew)
+  #smooth_i &lt;- predict(intrin, xnew)
+  #smooth_e &lt;- predict(extrin, xnew)
   
   # return CV and bandwidth
-  list(s2_intrin =  smooth_i, bw_intrin = intrin$bandwidth,
-       s2_extrin = smooth_e, bw_extrin = extrin$bandwidth)
-}
-
-
+  #list(s2_intrin =  smooth_i, bw_intrin = intrin$bandwidth,
+ #      s2_extrin = smooth_e, bw_extrin = extrin$bandwidth)
+#}
 #' Circular distances between a single vector and every other vector in a matrix
 #' @param x_new A vector denoting a new data point
 #' @param x_data The dataset
@@ -1370,10 +1389,11 @@ fibonaccisphere = function(n=1000, r=1) {
 #' @param parallel whether or not to run the algorithm parallel. The algorithm will be parallelized with respect to lambda and is recommended if your lambdas vector contains many values. Not recommended for only a handful of lamda values unless your dataset is large.
 #' @param k_init The starting value for a search of the ISOMAP nearest neighbor parameter k. Our method is to find the smallest such k such that the ISOMAP graph is connected, as detailed in the iso_try function. The default is 1 to find the smallest possible.
 #' @param approx whether or not to use the approximate spline method. We recommend to set this to be TRUE for very large lambda vectors and or very large sample sizes.
+#' @param eps_adj epsilon factor to add to denominator of CV calculation to prevent division by 0
 #' @export
 #' @importFrom foreach %dopar% %do%
 <span id="pme_2d_periodic">pme_2d_periodic</span> &lt;- function(data, lambdas, min_iter=1, max_iter = 10, optimize_lambda=F, err_tol = 0.01,parallel=F, cl = NULL, init_iso=F,k_init =10,
-                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1, eps_adj=1e-14) {
+                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1, eps_adj=0) {
     # Setup data and perform isomap to get initial parameterization
     X &lt;- data
     m &lt;- 2
@@ -1403,10 +1423,10 @@ fibonaccisphere = function(n=1000, r=1) {
     
     # Parallel loop over lambdas
     results &lt;- operator( foreach::foreach(i = 1:length(lambdas), 
-                                 .packages = c("stats", "pracma", "cooltools","Riemann"),
+                                 .packages = c("stats", "pracma","Riemann"),
                                  .export = c("spline2d","project_optimize2",
-                                             "spline_error","qm","expr","Rpp","m", "local_var_2d", "var_het",
-                                             "d_circ_vec","pelletier_kernel")), {
+                                             "spline_error","qm","expr","Rpp","m", "var_het", #"local_var_2d", "var_het",
+                                             "d_circ_vec","pelletier_kernel", "fibonaccisphere")), {
                                                
                                                Xi &lt;- X
                                                Znorm_i &lt;- Znorm
@@ -1443,32 +1463,39 @@ fibonaccisphere = function(n=1000, r=1) {
                                                
                                                # Compute variance heterogeneity, intrinsic and extrinsic
                                                #t1 &lt;- proc.time()
-                                               lvp &lt;- NULL
-                                               vhi &lt;- NULL
-                                               vhe &lt;- NULL
+                                               #lvp &lt;- NULL
+                                               #vhi &lt;- NULL
+                                               #vhe &lt;- NULL
                                                vhp &lt;-NULL
                                                
                                                # If optimizing lambda, perform variance heterogeneity routine
                                                if(optimize_lambda){
-                                                 lvp &lt;- <a href="create-CompactPME.html#local_var_2d">local_var_2d</a>(projection, resid_sq, eval_size=resid_smooth_size, bw_grid=bw_grid)
+                                                # lvp &lt;- <a href="create-CompactPME.html#local_var_2d">local_var_2d</a>(projection, resid_sq, eval_size=resid_smooth_size, bw_grid=bw_grid)
                                                  lv_pelletier &lt;- <a href="create-CompactPME.html#pelletier_kernel">pelletier_kernel</a>(fibonaccisphere(resid_smooth_size),
                                                                                   projection, resid_sq, pelletier_bw)
                                                  #print(lv_pelletier)
                                                  # Get coefficient of variation
-                                                 vhi &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp$s2_intrin,eps_adj) # get coefficient of variation
-                                                 vhe &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp$s2_extrin,eps_adj) 
+                                                 #vhi &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp$s2_intrin,eps_adj) # get coefficient of variation
+                                                 #vhe &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lvp$s2_extrin,eps_adj) 
                                                  vhp &lt;- <a href="create-CompactPME.html#var_het">var_het</a>(lv_pelletier,eps_adj)
                                                }
                                                
-                                               
-                                               list(spline = spl, tproj = projection, lambda = lambdas[i],
-                                                    resid_sq = resid_sq, cv_intrinsic = vhi$cv, cv_extrinsic = vhe$cv, cv_pelletier = vhp$cv, 
-                                                    mean_intrinsic = vhi$mean, mean_extrinsic = vhe$mean, mean_pelletier = vhp$mean,
-                                                    sd_intrinsic = vhi$sd, sd_extrinsic = vhe$sd, sd_pelletier = vhp$sd,
-                                                    bw_intrinsic =  lvp$bw_intrin, bw_extrinsic = lvp$bw_extrin, bw_pelletier = pelletier_bw,
+                                                list(spline = spl, tproj = projection, lambda = lambdas[i],
+                                                    resid_sq = resid_sq, cv_pelletier = vhp$cv, 
+                                                   mean_pelletier = vhp$mean,sd_pelletier = vhp$sd,
+                                                     bw_pelletier = pelletier_bw,
                                                     alphas=alphas[1:iter], mean_sq = fidelities[1:iter],
                                                     cost_functional = lambdas[i]*alphas[1:iter] + fidelities[1:iter])
                                              })
+                                               
+                                              # list(spline = spl, tproj = projection, lambda = lambdas[i],
+                                              #      resid_sq = resid_sq, cv_intrinsic = vhi$cv, cv_extrinsic = vhe$cv, cv_pelletier = vhp$cv, 
+                                              #      mean_intrinsic = vhi$mean, mean_extrinsic = vhe$mean, mean_pelletier = vhp$mean,
+                                              #      sd_intrinsic = vhi$sd, sd_extrinsic = vhe$sd, sd_pelletier = vhp$sd,
+                                              #      bw_intrinsic =  lvp$bw_intrin, bw_extrinsic = lvp$bw_extrin, bw_pelletier = pelletier_bw,
+                                              #      alphas=alphas[1:iter], mean_sq = fidelities[1:iter],
+                                              #      cost_functional = lambdas[i]*alphas[1:iter] + fidelities[1:iter])
+                                             #})
     
  
     
@@ -1491,14 +1518,14 @@ fibonaccisphere = function(n=1000, r=1) {
     if(optimize_lambda){
       
       # intrinsic
-      cvi_list   &lt;- sapply(results, function(res) res$cv_intrinsic)
-      meani_list &lt;- sapply(results, function(res) res$mean_intrinsic)
-      sdi_list   &lt;- sapply(results, function(res) res$sd_intrinsic)
+      #cvi_list   &lt;- sapply(results, function(res) res$cv_intrinsic)
+     # meani_list &lt;- sapply(results, function(res) res$mean_intrinsic)
+      #sdi_list   &lt;- sapply(results, function(res) res$sd_intrinsic)
       
       # extrinsic
-      cve_list   &lt;- sapply(results, function(res) res$cv_extrinsic)
-      meane_list &lt;- sapply(results, function(res) res$mean_extrinsic)
-      sde_list   &lt;- sapply(results, function(res) res$sd_extrinsic)
+      #cve_list   &lt;- sapply(results, function(res) res$cv_extrinsic)
+     # meane_list &lt;- sapply(results, function(res) res$mean_extrinsic)
+      #sde_list   &lt;- sapply(results, function(res) res$sd_extrinsic)
       
       # pelletier
       cvp_list   &lt;- sapply(results, function(res) res$cv_pelletier)
@@ -1507,39 +1534,39 @@ fibonaccisphere = function(n=1000, r=1) {
       
       
       # which spline minimizes CV?
-      mini_ind &lt;- which.min(cvi_list)
-      mine_ind &lt;- which.min(cve_list)
+     # mini_ind &lt;- which.min(cvi_list)
+     # mine_ind &lt;- which.min(cve_list)
       minp_ind &lt;- which.min(cvp_list)
       
       
       # store optimal splines
-      list_return$spline_optimal_intrinsic  &lt;- spline_list[[mini_ind]]
-      list_return$lambda_optimal_intrinsic  &lt;- lambda_list[mini_ind]
+     # list_return$spline_optimal_intrinsic  &lt;- spline_list[[mini_ind]]
+     # list_return$lambda_optimal_intrinsic  &lt;- lambda_list[mini_ind]
       
-      list_return$spline_optimal_extrinsic  &lt;- spline_list[[mine_ind]]
-      list_return$lambda_optimal_extrinsic  &lt;- lambda_list[mine_ind]
+      #list_return$spline_optimal_extrinsic  &lt;- spline_list[[mine_ind]]
+      #list_return$lambda_optimal_extrinsic  &lt;- lambda_list[mine_ind]
       
-      list_return$spline_optimal_pelletier  &lt;- spline_list[[minp_ind]]
-      list_return$lambda_optimal_pelletier  &lt;- lambda_list[minp_ind]
+     #list_return$spline_optimal_pelletier  &lt;- spline_list[[minp_ind]]
+     # list_return$lambda_optimal_pelletier  &lt;- lambda_list[minp_ind]
       
       list_return$cv &lt;- cbind(
         lambda     = lambda_list,
-        intrinsic  = cvi_list,
-        extrinsic  = cve_list,
+       # intrinsic  = cvi_list,
+       # extrinsic  = cve_list,
         pelletier  = cvp_list
       )
       
       list_return$mean &lt;- cbind(
         lambda     = lambda_list,
-        intrinsic  = meani_list,
-        extrinsic  = meane_list,
+      #  intrinsic  = meani_list,
+       # extrinsic  = meane_list,
         pelletier  = meanp_list
       )
       
       list_return$sd &lt;- cbind(
         lambda     = lambda_list,
-        intrinsic  = sdi_list,
-        extrinsic  = sde_list,
+      #  intrinsic  = sdi_list,
+       # extrinsic  = sde_list,
         pelletier  = sdp_list
       )
       
@@ -1590,7 +1617,7 @@ fibonaccisphere = function(n=1000, r=1) {
   D &lt;- fit$D
   
   # Start base plot with data points
-  p &lt;- plotly::yplot_ly()
+  p &lt;- plotly::plot_ly()
   
   
   if(D == 2){
@@ -1741,15 +1768,14 @@ this file.</p>
 ## ✖ Level 1 headings are not supported in @title
 ## ℹ Do you want to put the heading in @description or @details?
 ## Writing 'NAMESPACE'
+## Writing 'd_circ_vec.Rd'
+## Writing 'pelletier_kernel.Rd'
 ## Writing 'Rk.Rd'
 ## Writing 'iso_try.Rd'
 ## Writing 'normalize.Rd'
 ## Writing 'spline_error.Rd'
 ## Writing 'krt.Rd'
 ## Writing 'krst.Rd'
-## Writing 'local_var_2d.Rd'
-## Writing 'd_circ_vec.Rd'
-## Writing 'pelletier_kernel.Rd'
 ## Writing 'plot.cpme.Rd'
 ## Writing 'plot_1d.Rd'
 ## Writing 'genSurface.Rd'

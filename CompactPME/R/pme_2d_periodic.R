@@ -13,10 +13,11 @@
 #' @param parallel whether or not to run the algorithm parallel. The algorithm will be parallelized with respect to lambda and is recommended if your lambdas vector contains many values. Not recommended for only a handful of lamda values unless your dataset is large.
 #' @param k_init The starting value for a search of the ISOMAP nearest neighbor parameter k. Our method is to find the smallest such k such that the ISOMAP graph is connected, as detailed in the iso_try function. The default is 1 to find the smallest possible.
 #' @param approx whether or not to use the approximate spline method. We recommend to set this to be TRUE for very large lambda vectors and or very large sample sizes.
+#' @param eps_adj epsilon factor to add to denominator of CV calculation to prevent division by 0
 #' @export
 #' @importFrom foreach %dopar% %do%
 pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_lambda=F, err_tol = 0.01,parallel=F, cl = NULL, init_iso=F,k_init =10,
-                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1, eps_adj=1e-14) {
+                           resid_smooth_size = 1000,bw_grid = 1000, pelletier_bw=0.1, eps_adj=0) {
     # Setup data and perform isomap to get initial parameterization
     X <- data
     m <- 2
@@ -46,10 +47,10 @@ pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_l
     
     # Parallel loop over lambdas
     results <- operator( foreach::foreach(i = 1:length(lambdas), 
-                                 .packages = c("stats", "pracma", "cooltools","Riemann"),
+                                 .packages = c("stats", "pracma","Riemann"),
                                  .export = c("spline2d","project_optimize2",
-                                             "spline_error","qm","expr","Rpp","m", "local_var_2d", "var_het",
-                                             "d_circ_vec","pelletier_kernel")), {
+                                             "spline_error","qm","expr","Rpp","m", "var_het", #"local_var_2d", "var_het",
+                                             "d_circ_vec","pelletier_kernel", "fibonaccisphere")), {
                                                
                                                Xi <- X
                                                Znorm_i <- Znorm
@@ -86,32 +87,39 @@ pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_l
                                                
                                                # Compute variance heterogeneity, intrinsic and extrinsic
                                                #t1 <- proc.time()
-                                               lvp <- NULL
-                                               vhi <- NULL
-                                               vhe <- NULL
+                                               #lvp <- NULL
+                                               #vhi <- NULL
+                                               #vhe <- NULL
                                                vhp <-NULL
                                                
                                                # If optimizing lambda, perform variance heterogeneity routine
                                                if(optimize_lambda){
-                                                 lvp <- local_var_2d(projection, resid_sq, eval_size=resid_smooth_size, bw_grid=bw_grid)
+                                                # lvp <- local_var_2d(projection, resid_sq, eval_size=resid_smooth_size, bw_grid=bw_grid)
                                                  lv_pelletier <- pelletier_kernel(fibonaccisphere(resid_smooth_size),
                                                                                   projection, resid_sq, pelletier_bw)
                                                  #print(lv_pelletier)
                                                  # Get coefficient of variation
-                                                 vhi <- var_het(lvp$s2_intrin,eps_adj) # get coefficient of variation
-                                                 vhe <- var_het(lvp$s2_extrin,eps_adj) 
+                                                 #vhi <- var_het(lvp$s2_intrin,eps_adj) # get coefficient of variation
+                                                 #vhe <- var_het(lvp$s2_extrin,eps_adj) 
                                                  vhp <- var_het(lv_pelletier,eps_adj)
                                                }
                                                
-                                               
-                                               list(spline = spl, tproj = projection, lambda = lambdas[i],
-                                                    resid_sq = resid_sq, cv_intrinsic = vhi$cv, cv_extrinsic = vhe$cv, cv_pelletier = vhp$cv, 
-                                                    mean_intrinsic = vhi$mean, mean_extrinsic = vhe$mean, mean_pelletier = vhp$mean,
-                                                    sd_intrinsic = vhi$sd, sd_extrinsic = vhe$sd, sd_pelletier = vhp$sd,
-                                                    bw_intrinsic =  lvp$bw_intrin, bw_extrinsic = lvp$bw_extrin, bw_pelletier = pelletier_bw,
+                                                list(spline = spl, tproj = projection, lambda = lambdas[i],
+                                                    resid_sq = resid_sq, cv_pelletier = vhp$cv, 
+                                                   mean_pelletier = vhp$mean,sd_pelletier = vhp$sd,
+                                                     bw_pelletier = pelletier_bw,
                                                     alphas=alphas[1:iter], mean_sq = fidelities[1:iter],
                                                     cost_functional = lambdas[i]*alphas[1:iter] + fidelities[1:iter])
                                              })
+                                               
+                                              # list(spline = spl, tproj = projection, lambda = lambdas[i],
+                                              #      resid_sq = resid_sq, cv_intrinsic = vhi$cv, cv_extrinsic = vhe$cv, cv_pelletier = vhp$cv, 
+                                              #      mean_intrinsic = vhi$mean, mean_extrinsic = vhe$mean, mean_pelletier = vhp$mean,
+                                              #      sd_intrinsic = vhi$sd, sd_extrinsic = vhe$sd, sd_pelletier = vhp$sd,
+                                              #      bw_intrinsic =  lvp$bw_intrin, bw_extrinsic = lvp$bw_extrin, bw_pelletier = pelletier_bw,
+                                              #      alphas=alphas[1:iter], mean_sq = fidelities[1:iter],
+                                              #      cost_functional = lambdas[i]*alphas[1:iter] + fidelities[1:iter])
+                                             #})
     
  
     
@@ -134,14 +142,14 @@ pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_l
     if(optimize_lambda){
       
       # intrinsic
-      cvi_list   <- sapply(results, function(res) res$cv_intrinsic)
-      meani_list <- sapply(results, function(res) res$mean_intrinsic)
-      sdi_list   <- sapply(results, function(res) res$sd_intrinsic)
+      #cvi_list   <- sapply(results, function(res) res$cv_intrinsic)
+     # meani_list <- sapply(results, function(res) res$mean_intrinsic)
+      #sdi_list   <- sapply(results, function(res) res$sd_intrinsic)
       
       # extrinsic
-      cve_list   <- sapply(results, function(res) res$cv_extrinsic)
-      meane_list <- sapply(results, function(res) res$mean_extrinsic)
-      sde_list   <- sapply(results, function(res) res$sd_extrinsic)
+      #cve_list   <- sapply(results, function(res) res$cv_extrinsic)
+     # meane_list <- sapply(results, function(res) res$mean_extrinsic)
+      #sde_list   <- sapply(results, function(res) res$sd_extrinsic)
       
       # pelletier
       cvp_list   <- sapply(results, function(res) res$cv_pelletier)
@@ -150,39 +158,39 @@ pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_l
       
       
       # which spline minimizes CV?
-      mini_ind <- which.min(cvi_list)
-      mine_ind <- which.min(cve_list)
+     # mini_ind <- which.min(cvi_list)
+     # mine_ind <- which.min(cve_list)
       minp_ind <- which.min(cvp_list)
       
       
       # store optimal splines
-      list_return$spline_optimal_intrinsic  <- spline_list[[mini_ind]]
-      list_return$lambda_optimal_intrinsic  <- lambda_list[mini_ind]
+     # list_return$spline_optimal_intrinsic  <- spline_list[[mini_ind]]
+     # list_return$lambda_optimal_intrinsic  <- lambda_list[mini_ind]
       
-      list_return$spline_optimal_extrinsic  <- spline_list[[mine_ind]]
-      list_return$lambda_optimal_extrinsic  <- lambda_list[mine_ind]
+      #list_return$spline_optimal_extrinsic  <- spline_list[[mine_ind]]
+      #list_return$lambda_optimal_extrinsic  <- lambda_list[mine_ind]
       
-      list_return$spline_optimal_pelletier  <- spline_list[[minp_ind]]
-      list_return$lambda_optimal_pelletier  <- lambda_list[minp_ind]
+     #list_return$spline_optimal_pelletier  <- spline_list[[minp_ind]]
+     # list_return$lambda_optimal_pelletier  <- lambda_list[minp_ind]
       
       list_return$cv <- cbind(
         lambda     = lambda_list,
-        intrinsic  = cvi_list,
-        extrinsic  = cve_list,
+       # intrinsic  = cvi_list,
+       # extrinsic  = cve_list,
         pelletier  = cvp_list
       )
       
       list_return$mean <- cbind(
         lambda     = lambda_list,
-        intrinsic  = meani_list,
-        extrinsic  = meane_list,
+      #  intrinsic  = meani_list,
+       # extrinsic  = meane_list,
         pelletier  = meanp_list
       )
       
       list_return$sd <- cbind(
         lambda     = lambda_list,
-        intrinsic  = sdi_list,
-        extrinsic  = sde_list,
+      #  intrinsic  = sdi_list,
+       # extrinsic  = sde_list,
         pelletier  = sdp_list
       )
       

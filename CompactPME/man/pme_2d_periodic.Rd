@@ -18,7 +18,7 @@ pme_2d_periodic(
   resid_smooth_size = 1000,
   bw_grid = 1000,
   pelletier_bw = 0.1,
-  eps_adj = 1e-14
+  eps_adj = 0
 )
 }
 \arguments{
@@ -37,6 +37,8 @@ pme_2d_periodic(
 \item{parallel}{whether or not to run the algorithm parallel. The algorithm will be parallelized with respect to lambda and is recommended if your lambdas vector contains many values. Not recommended for only a handful of lamda values unless your dataset is large.}
 
 \item{k_init}{The starting value for a search of the ISOMAP nearest neighbor parameter k. Our method is to find the smallest such k such that the ISOMAP graph is connected, as detailed in the iso_try function. The default is 1 to find the smallest possible.}
+
+\item{eps_adj}{epsilon factor to add to denominator of CV calculation to prevent division by 0}
 
 \item{lvp_grid}{The number denoting the size of the grid used for kernel smoothing for the tuning parameter selection. If left as NULL, it will choose a grid of 10 times the sample size.
 #' @param cl A a makeCluster object for parallelization. For most cases, should be left null so that a new cluster is made upon runtime.}
