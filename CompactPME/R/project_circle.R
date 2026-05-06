@@ -8,8 +8,6 @@ project_circle <- function(X){
   (atan2(Xc[,2],Xc[,1])/(2*pi)) %% 1
 }
 
-
-
 #' Optimization over a grid. This is to find the best projection index on a 1d Manifold
 #' @param Xraw A data `matrix`
 #' @param res A spline fit function
@@ -39,21 +37,22 @@ project_grid <- function(Xraw, res, gridSize = 1000) {
 #' @return The projection indices
 project_optimize <- function(Xraw, res, periodic = F) {
   # Intialize t
-  n <- nrow(X)
+  n <- nrow(Xraw)
   topt <- rep(0, n)
   # Apply iterative optimization scheme based on spline fit
   
   for (i in 1:n) {
-    ff <- function(t) {
+    ftemp <- function(t) {
       sum((Xraw[i, ] - res(t) )^2)
     }
-    t[i] <- optimize(ff, interval = c(0, 1))$minimum
+    t[i] <- optimize(ftemp, interval = c(0, 1))$minimum
   }
   # Return t
   ret <- topt
   
-  if(periodic)
+  if(periodic){
     ret <- topt %% 1
+  }
   
   return(ret)
 }

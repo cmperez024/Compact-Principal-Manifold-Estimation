@@ -16,10 +16,11 @@
 #' @param parallel whether or not to run the algorithm parallel. The algorithm will be parallelized with respect to lambda and is recommended if your lambdas vector contains many values. Not recommended for only a handful of lamda values unless your dataset is large.
 #' @param k_init The starting value for a search of the ISOMAP nearest neighbor parameter k. Our method is to find the smallest such k such that the ISOMAP graph is connected, as detailed in the iso_try function. The default is 1 to find the smallest possible.
 #' @param approx whether or not to use the approximate spline method. We recommend to set this to be TRUE for very large lambda vectors and or very large sample sizes.
+#' @param eps_adj epsilon factor to add to denominator of CV calculation to prevent division by 0
 #' @export
 #' @importFrom foreach %dopar% %do%
 pme_1d_periodic <- function(data, lambdas, method = "grid", gridSize = 1000,  min_iter=1, max_iter = 10, err_tol=0.01, k_init = 1,init_iso = F, optimize_lambda=F,
-                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F, eps_adj=1e-14)
+                                  parallel=F,cl=NULL,lvp_grid=NULL, approx=F, eps_adj=0)
 {
   n <- nrow(data)
   X <- data

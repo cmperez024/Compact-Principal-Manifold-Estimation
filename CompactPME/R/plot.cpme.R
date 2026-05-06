@@ -30,7 +30,7 @@ plot_1d <- function(fit,S){
   D <- fit$D
   
   # Start base plot with data points
-  p <- plotly::yplot_ly()
+  p <- plotly::plot_ly()
   
   
   if(D == 2){

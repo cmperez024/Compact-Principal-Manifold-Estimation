@@ -17,7 +17,7 @@ pme_1d_interval(
   parallel = F,
   k_init = 1,
   approx = F,
-  eps_adj = 1e-14
+  eps_adj = 0
 )
 }
 \arguments{
@@ -44,6 +44,8 @@ pme_1d_interval(
 \item{k_init}{The starting value for a search of the ISOMAP nearest neighbor parameter k. Our method is to find the smallest such k such that the ISOMAP graph is connected, as detailed in the iso_try function. The default is 1 to find the smallest possible.}
 
 \item{approx}{whether or not to use the approximate spline method. We recommend to set this to be TRUE for very large lambda vectors and or very large sample sizes.}
+
+\item{eps_adj}{epsilon factor to add to denominator of CV calculation to prevent division by 0}
 }
 \value{
 A list containing
