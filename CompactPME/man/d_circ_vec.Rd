@@ -2,7 +2,13 @@
 % Please edit documentation in create-CompactPME.Rmd.
 \name{d_circ_vec}
 \alias{d_circ_vec}
-\title{Circular distances between a single vector and every other vector in a matrix}
+\title{Compute smoothed residuals using kernel smoothing, 2d CASE
+param Z projection indices (vectors in R3)
+param resid_sq residual values
+param eval_size grid size for smoothing
+param bw_grid interval size for searching for optimal bandwidth
+return A list consisting of the evaluation grid, the fitted residuals, and the bandwidth.
+Circular distances between a single vector and every other vector in a matrix}
 \usage{
 d_circ_vec(x_new, x_data)
 }
@@ -15,5 +21,11 @@ d_circ_vec(x_new, x_data)
 A vector of distances between the vector to each row of the matrix using a circular geodesic
 }
 \description{
+Compute smoothed residuals using kernel smoothing, 2d CASE
+param Z projection indices (vectors in R3)
+param resid_sq residual values
+param eval_size grid size for smoothing
+param bw_grid interval size for searching for optimal bandwidth
+return A list consisting of the evaluation grid, the fitted residuals, and the bandwidth.
 Circular distances between a single vector and every other vector in a matrix
 }

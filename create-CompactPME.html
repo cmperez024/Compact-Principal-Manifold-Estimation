@@ -1171,7 +1171,37 @@ approximate method utilizing external packages.</p>
 <h2>2d Sphere Functions</h2>
 <div id="kernel-smoothing-1" class="section level3">
 <h3>Kernel Smoothing</h3>
+<<<<<<< HEAD
 <pre class="r"><code>#' Circular distances between a single vector and every other vector in a matrix
+=======
+<pre class="r"><code>#'  Compute smoothed residuals using kernel smoothing, 2d CASE
+#'  param Z projection indices (vectors in R3)
+#'  param resid_sq residual values
+#'  param eval_size grid size for smoothing
+#'  param bw_grid interval size for searching for optimal bandwidth
+#'  return A list consisting of the evaluation grid, the fitted residuals, and the bandwidth.
+#<span id="local_var_2d">local_var_2d</span> &lt;- function(Z, resid_sq, eval_size = 1000,bw_grid = 100) {
+  #xriem &lt;- wrap.sphere(Z) # turn our dependent variable to riemann sphere object
+  
+  # bws &lt;- seq(from = 0, to = 1, length.out= grid_eval)[-1]# get set of bandwidths to test
+  #bws &lt;- seq(from = 0.1, to = 1, length.out= bw_grid) # bw too small results in NA
+  
+ # intrin &lt;- riem.m2skregCV(xriem, resid_sq, geometry="intrinsic", bandwidths =bws)
+#  extrin &lt;- riem.m2skregCV(xriem, resid_sq, geometry="extrinsic",bandwidths =bws)
+  
+  # Predictions on new set
+  #xnew &lt;- wrap.sphere(fibonaccisphere(eval_size)) # evenly spaced sphere points
+  
+  # Get smoothed results
+  #smooth_i &lt;- predict(intrin, xnew)
+  #smooth_e &lt;- predict(extrin, xnew)
+  
+  # return CV and bandwidth
+  #list(s2_intrin =  smooth_i, bw_intrin = intrin$bandwidth,
+ #      s2_extrin = smooth_e, bw_extrin = extrin$bandwidth)
+#}
+#' Circular distances between a single vector and every other vector in a matrix
+>>>>>>> dc399005b69283519640b7b17c3c44af032045f9
 #' @param x_new A vector denoting a new data point
 #' @param x_data The dataset
 #' @returns A vector of distances between the vector to each row of the matrix using a circular geodesic
@@ -1398,7 +1428,11 @@ fibonaccisphere = function(n=1000, r=1) {
     results &lt;- operator( foreach::foreach(i = 1:length(lambdas), 
                                  .packages = c("stats", "pracma","Riemann"),
                                  .export = c("spline2d","project_optimize2",
+<<<<<<< HEAD
                                              "spline_error","qm","expr","Rpp","m", "var_het", 
+=======
+                                             "spline_error","qm","expr","Rpp","m", "var_het", #"local_var_2d", "var_het",
+>>>>>>> dc399005b69283519640b7b17c3c44af032045f9
                                              "d_circ_vec","pelletier_kernel", "fibonaccisphere")), {
                                                
                                                Xi &lt;- X
@@ -1443,7 +1477,11 @@ fibonaccisphere = function(n=1000, r=1) {
                                                
                                                # If optimizing lambda, perform variance heterogeneity routine
                                                if(optimize_lambda){
+<<<<<<< HEAD
                                                 # lvp &lt;- local_var_2d(projection, resid_sq, eval_size=resid_smooth_size, bw_grid=bw_grid)
+=======
+                                                # lvp &lt;- <a href="create-CompactPME.html#local_var_2d">local_var_2d</a>(projection, resid_sq, eval_size=resid_smooth_size, bw_grid=bw_grid)
+>>>>>>> dc399005b69283519640b7b17c3c44af032045f9
                                                  lv_pelletier &lt;- <a href="create-CompactPME.html#pelletier_kernel">pelletier_kernel</a>(fibonaccisphere(resid_smooth_size),
                                                                                   projection, resid_sq, pelletier_bw)
                                                  #print(lv_pelletier)
@@ -1741,6 +1779,8 @@ this file.</p>
 ## ✖ Level 1 headings are not supported in @title
 ## ℹ Do you want to put the heading in @description or @details?
 ## Writing 'NAMESPACE'
+## Writing 'd_circ_vec.Rd'
+## Writing 'pelletier_kernel.Rd'
 ## Writing 'Rk.Rd'
 ## Writing 'd_circ_vec.Rd'
 ## Writing 'pelletier_kernel.Rd'
