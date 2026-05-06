@@ -49,7 +49,15 @@ pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_l
     results <- operator( foreach::foreach(i = 1:length(lambdas), 
                                  .packages = c("stats", "pracma","Riemann"),
                                  .export = c("spline2d","project_optimize2",
+<<<<<<< HEAD
                                              "spline_error","qm","expr","Rpp","m", "var_het", 
+=======
+<<<<<<< HEAD
+                                             "spline_error","qm","expr","Rpp","m", "var_het", 
+=======
+                                             "spline_error","qm","expr","Rpp","m", "var_het", #"local_var_2d", "var_het",
+>>>>>>> dc399005b69283519640b7b17c3c44af032045f9
+>>>>>>> bf927ad1a5c5c1fefb0444f03847883cb35ecfc9
                                              "d_circ_vec","pelletier_kernel", "fibonaccisphere")), {
                                                
                                                Xi <- X
