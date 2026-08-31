@@ -1,0 +1,134 @@
+\begin{itemize}
+    \item We conduct additional experiments using extrinsic local regression
+    for manifold-valued responses and Euclidean covariates
+    \citep{linExtrinsicLocalRegression2017}. The observed covariate should not
+    be the latent projection index used by PME: if that smooth ordering were
+    observed, one could directly regress the two ambient coordinates on the
+    ordering. We therefore generate a Euclidean covariate once, condition on
+    the resulting design, and relate it to the flower phase through a
+    deterministic, nonmonotone map. All stochastic variation after fixing the
+    design is introduced at the response level.
+
+    \item For each $i=1,\ldots,N$, generate the fixed design once as
+    \begin{align}
+        t_i &\overset{\mathrm{iid}}{\sim} \operatorname{Uniform}(-1,1),\\
+        u_i &= \left\{\frac{1+\sin(\pi t_i)}{2}\right\}\bmod 1.
+    \end{align}
+    After this initial generation, inference is conditional on
+    $\{t_i\}_{i=1}^N$. In particular, there is no stochastic error in either
+    $t_i$ or $u_i$. Because $t\mapsto u(t)$ is nonmonotone, $t_i$ is not the
+    latent ordering or projection index of the flower.
+
+    Define the flower embedding $F:S^1\rightarrow\mathbb{R}^2$ by
+    \begin{align}
+        \theta(u) &= 2\pi u,\\
+        r(u) &= 1+a\cos\{5\theta(u)\},\\
+        F(u) &= r(u)
+        \begin{pmatrix}
+            \cos\{\theta(u)\}\\
+            \sin\{\theta(u)\}
+        \end{pmatrix},
+    \end{align}
+    with flower amplitude $a=0.30$. The conditional mean response is
+    \[
+        \mu_i=\mu(t_i)=F(u_i),
+    \]
+    and the observed ambient response is
+    \begin{align}
+        X_i &= \mu_i+\varepsilon_i,\\
+        \varepsilon_i &\overset{\mathrm{iid}}{\sim}
+        \mathcal{N}_2\!\left(
+        \begin{pmatrix}0\\0\end{pmatrix},
+        \sigma_X^2 I_2\right),
+    \end{align}
+    where $\sigma_X=0.04$. Thus, unlike the previous phase-variability
+    experiment, the present experiment has no latent phase error; the only
+    noise is additive response noise in the ambient space.
+
+    \item For a candidate PME smoothing parameter $\lambda_j$ and a given
+    training fold, we proceed as follows:
+    \begin{enumerate}
+        \item Fit PME to the training responses only, obtaining the manifold
+        estimate $\widehat S_{j}$.
+        \item Project each training response onto $\widehat S_j$ to obtain
+        \[
+            \widetilde Y_{i,j}
+            =P_{\widehat S_j}(X_i).
+        \]
+        \item Form the training pairs $(t_i,\widetilde Y_{i,j})$ and fit both
+        extrinsic regression estimators proposed by
+        \citet{linExtrinsicLocalRegression2017}.
+
+        For extrinsic kernel regression, the ambient estimate is
+        \[
+            \widehat m_{K,j}(t)
+            =\frac{\sum_iK_h(t_i-t)\widetilde Y_{i,j}}
+            {\sum_iK_h(t_i-t)},
+        \]
+        followed by
+        \[
+            \widehat\mu_{E,K,j}(t)
+            =P_{\widehat S_j}\{\widehat m_{K,j}(t)\}.
+        \]
+        For extrinsic local-linear regression, we calculate
+        \begin{align}
+            (\widehat\beta_0,\widehat\beta_1)
+            =\arg\min_{\beta_0,\beta_1}
+            \sum_i K_h(t_i-t)
+            \left\|\widetilde Y_{i,j}
+            -\beta_0-\beta_1(t_i-t)\right\|^2,
+        \end{align}
+        and then set
+        \[
+            \widehat\mu_{E,LL,j}(t)
+            =P_{\widehat S_j}\{\widehat\beta_0(t)\}.
+        \]
+    \end{enumerate}
+
+    \item We use nested five-fold cross-validation. For each candidate
+    $\lambda$ and outer fold, PME is fitted to the training responses and the
+    regression bandwidth is selected by leave-one-out prediction of the
+    projected training responses. The resulting pipeline is evaluated against
+    the raw, unprojected outer-fold responses, which are used only to select
+    $\lambda$. RMSE against the known conditional mean $\mu(t_i)$ is reported
+    only as a simulation-oracle diagnostic and is not used for tuning.
+
+    The candidate grid was
+    \[
+        \lambda\in\{10^{-14},10^{-13},\ldots,10^{-4}\},
+    \]
+    with regression bandwidths ranging from $0.004$ to $0.38$. Both procedures
+    selected $\lambda=10^{-8}$. For extrinsic kernel regression, the mean
+    fold-selected bandwidth was $0.0064$, the full-data bandwidth was $0.006$,
+    and the raw and simulation-oracle RMSEs were $0.06626$ and $0.03483$.
+    For extrinsic local-linear regression, the corresponding values were
+    $0.0092$, $0.008$, $0.06044$, and $0.02215$. All 55 fold-specific PME fits
+    converged.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{08_2026_fig/kfold_performance.png}
+    \caption{Five-fold out-of-fold performance for extrinsic kernel regression
+    (left) and extrinsic local-linear regression (right). At each value of
+    $\lambda$ and outer fold, the regression bandwidth is chosen by
+    leave-one-out prediction of the projected training responses. The orange
+    curve is mean RMSE against the untouched noisy outer-fold responses and is
+    used to select $\lambda$. The blue dashed curve is RMSE against the known
+    conditional mean, evaluated at the same fold-selected bandwidths, and is
+    shown only as an oracle diagnostic. Both methods select
+    $\lambda=10^{-8}$.}
+    \label{fig:kfold_performance}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{08_2026_fig/kfold_fits.png}
+    \caption{Fixed-design responses with response-noise standard deviation
+    $\sigma_X=0.04$ (left) and the full-data PME fit at the cross-validation-
+    selected value $\lambda=10^{-8}$ (right). The black dashed curve is the
+    true flower and the blue curve is the selected PME manifold. The kernel
+    and local-linear downstream criteria selected the same PME smoothing
+    parameter and therefore yield the same manifold fit.}
+    \label{fig:kfold_fits}
+\end{figure}

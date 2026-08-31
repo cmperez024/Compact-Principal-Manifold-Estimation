@@ -1,0 +1,20 @@
+scope,paper_section,tex_label,asset,original_zip_path,status
+main_text,"Introduction - projection and residual illustration",fig:proj-curve,manuscript-native LaTeX/TikZ,AOS submission/aos_main.tex,referenced as Figure 1.1
+main_text,"Mathematical Preliminaries - Riemannian Manifolds and Their Topologies",fig:interval_S1_full,01_main_text/01_overview_and_preliminaries/interval_S1_full.png,numerical_examples_figs/interval_S1_full.png,referenced as Figure 2.1
+main_text,"Mathematical Preliminaries - projection indices and medial axis",fig:ellipse-medial-axis,manuscript-native LaTeX/TikZ,AOS submission/aos_main.tex,referenced as Figure 2.2
+main_text,"Principal Manifold Estimation - Principal Manifolds via Minimization",fig:2d3D_star_moon,01_main_text/02_principal_manifold_estimation/2d3D_star_moon.png,sim_section_figs/2d3D_star_moon.png,referenced as Figure 3.1
+main_text,"Principal Manifold Estimation - PA convergence illustration",fig:placeholder,manuscript-native LaTeX/TikZ,AOS submission/aos_main.tex,referenced as Figure 3.2
+main_text,"Principal Manifold Estimation - Empirical Version",fig:PME_monte_carlo,01_main_text/02_principal_manifold_estimation/PME_monte_carlo_star2.png,numerical_examples_figs/PME_monte_carlo_star2.png,referenced as Figure 4.1
+main_text,"Numerical nonidentifiability of manifold geometry",fig:noisy-circle-density-curve-grid,01_main_text/03_numerical_nonidentifiability/figure_5_1_numerical_nonidentifiability.png,lambda_selection_figs/quantile_corrugated_density_curve_grid.png,referenced as Figure 5.1
+main_text,"Downstream tuning via extrinsic regression",fig:extrinsic-regression-lambda-selection,01_main_text/04_downstream_tuning/figure_5_2_downstream_tuning.png,lambda_selection_figs/extrinsic_regression_flower_studies.png,referenced as Figure 5.2
+appendix,"Poisson Surface Reconstruction versus Principal Manifold Estimation - Comparison",fig:cashew_hole,02_appendix/01_surface_reconstruction_comparison/combined.png,appendix_figs/combined.png,referenced as Figure B.1
+appendix,"Projection-Adaptation Algorithm - Initialization",fig:example_star_convex,02_appendix/02_algorithm_initialization/example_star_convex.png,appendix_figs/example_star_convex.png,referenced
+appendix,"Projection-Adaptation Algorithm - Initialization",fig:isomap_unwind,02_appendix/02_algorithm_initialization/isomap_unwind.png,appendix_figs/isomap_unwind.png,referenced
+appendix,"Projection-Adaptation Algorithm - Initialization",fig:isomap_unwind_first_vs_converged,02_appendix/02_algorithm_initialization/isomap_unwind_first_vs_converged.png,appendix_figs/isomap_unwind_first_vs_converged.png,referenced
+appendix,"Projection-Adaptation Algorithm - Initialization",fig:isomap_1d_vs_2d,02_appendix/02_algorithm_initialization/iso_1d_2d.png,sim_section_figs/iso_1d_2d.png,referenced
+appendix,"Latent-Variable Model and Tuning Parameter Selection via Oracle Criterion",fig:pme_demo_cv_lambda_selection,02_appendix/03_tuning_parameter_selection/cv_periodic_example.png,lambda_selection_figs/cv_periodic_example.png,referenced
+appendix,"Latent-Variable Model and Tuning Parameter Selection via Oracle Criterion",fig:sph_results_panel_8,02_appendix/03_tuning_parameter_selection/flower_panel.png,sim_section_figs/flower_panel.png,referenced
+appendix,"Latent-Variable Model and Tuning Parameter Selection via Oracle Criterion",fig:sph_results_panel_8,02_appendix/03_tuning_parameter_selection/cashew_panel.png,sim_section_figs/cashew_panel.png,referenced
+appendix,"Additional Simulations - One-Dimensional Templates in Ambient Three-Dimensional Space",fig:1d3D_sine_spiral,02_appendix/04_additional_simulations/1d3D_sine_spiral.png,appendix_figs/1d3D_sine_spiral.png,referenced
+appendix,"Additional Simulations - One-Dimensional Templates in Ambient Three-Dimensional Space",fig:1d3D_star_moon,02_appendix/04_additional_simulations/1d3D_star_moon.png,appendix_figs/1d3D_star_moon.png,referenced
+appendix,"Additional Simulations - Asymptotics of the Tuning Parameter",fig:dist_lambda_infty,02_appendix/04_additional_simulations/dist_lambda_infty.png,sim_section_figs/dist_lambda_infty.png,referenced

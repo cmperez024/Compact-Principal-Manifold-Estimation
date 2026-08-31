@@ -1,31 +1,50 @@
 # Compact Principal Manifold Estimation
 
-## Installation and Getting Started
+This repository contains the CompactPME R package and the reproducible figure
+workflows for its associated Euclidean principal-manifold manuscript.
 
-To install the package, please use the commands below. Note that you must specify the subdir for it to work correctly.
+## Repository layout
 
-``` r
-library(devtools)
-install_github("cmperez024/Compact-Principal-Manifold-Estimation", subdir="CompactPME")
+- `CompactPME/`: installable R package.
+- `create-CompactPME.Rmd`: authoritative literate source used to create the
+  package files.
+- `simulation_reproduction/`: code, saved inputs, and only the figures used in
+  the current manuscript, grouped in manuscript order.
+
+Start with `simulation_reproduction/MANIFEST.csv` to map manuscript figures to
+files, and with `simulation_reproduction/CODE_MANIFEST.csv` to locate their
+generating code. Each subsection also includes a `REPRODUCE.md` run guide.
+
+## Installation
+
+```r
+remotes::install_github(
+  "cmperez024/Compact-Principal-Manifold-Estimation",
+  subdir = "CompactPME"
+)
 ```
 
-To use the package, you must first have an $N \times D$ data matrix where $D$ is the ambient dimension, and some smoothing parameter value $\lambda$. The code
+For local development from the repository root:
 
-``` r
-# Given some data, X
-fit <- pme_1d_interval(X, 10^(-10:-2), optimize_lambda=T)
+```r
+devtools::load_all("CompactPME")
 ```
 
-will return a manifold estimates for each of the $\lambda$ values in $\{10^{-10}, \ldots, 10^{-2}\}.$ It will also perform the optimization routine, where one may observe the coefficient of heterogeneity values for each fit.
+## Basic use
 
-## Files
+Given an `N` by `D` data matrix `X`, fit one-dimensional interval-template
+estimates over a smoothing-parameter grid with:
 
-Outside of the directory CompactPME (which contains the project files), we also have the source code for the package which is written using the [litr](https://jacobbien.github.io/litr-project/) package in R. This is available in its raw Rmd form as create-CompactPME.Rmd. In the Simulation Scripts folder, there are scripts that can be run independently of the package to reproduce results in the paper. Also in this folder is the datasets file which contains multiple functions for generating simulated data.
+```r
+fit <- pme_1d_interval(X, 10^(-10:-2), optimize_lambda = TRUE)
+```
 
-## Contributions
+## Source policy
 
-Most functions developed by Christopher Perez. Code for variance heterogeneity in 1d (local_var_1d and var_het) provided by Kun Meng.
+`create-CompactPME.Rmd` is the package source of record and uses
+[`litr`](https://jacobbien.github.io/litr-project/) to generate files under
+`CompactPME/`. Changes to generated package code should also be reflected in
+the source Rmd.
 
-## Citing this Package
-
-This package is associated with the paper ["Theoretical Foundations of Principal Manifold Estimation with Non-Euclidean Templates" (Meng, Perez, 2026, arXiv Pre-Print)](https://arxiv.org/abs/2604.04272).
+Most functions were developed by Christopher Perez. Kun Meng contributed the
+one-dimensional variance-heterogeneity functions `local_var_1d` and `var_het`.

@@ -23,13 +23,26 @@ usethis::create_package(
     Package = params$package_name,
     Version = "0.0.1",
     Title = "Compact Principal Manifold Estimation",
-    Description = "Sample description.",
+    Description = paste(
+      "Estimates smooth principal curves and surfaces from noisy point",
+      "clouds using compact one- and two-dimensional Riemannian template",
+      "manifolds. Implementations are provided for interval, circle, and",
+      "sphere templates, including projection-adaptation fitting and",
+      "smoothing-parameter selection utilities."
+    ),
     `Authors@R` = person(
       given = "Christopher",
       family = "Perez",
       email = "cmp23b@fsu.edu",
       role = c("aut", "cre")
-      )
+      ),
+    Author = "Christopher Perez [aut, cre]",
+    Maintainer = "Christopher Perez <cmp23b@fsu.edu>",
+    URL = "https://github.com/cmperez024/Compact-Principal-Manifold-Estimation",
+    BugReports = paste0(
+      "https://github.com/cmperez024/",
+      "Compact-Principal-Manifold-Estimation/issues"
+    )
   )
 )
 

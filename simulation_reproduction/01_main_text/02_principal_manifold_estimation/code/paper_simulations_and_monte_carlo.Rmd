@@ -1,0 +1,1656 @@
+---
+title: "(33) paper simulations"
+author: "Christopher Perez"
+date: "2026-01-21"
+output: html_document
+---
+
+Simulation helper functions
+```{r}
+library(fdasrvf)
+library(pracma)
+library(cooltools)
+library(foreach)
+library(doParallel)
+library(vegan)
+library(patchwork)
+```
+
+This does not work for 2d object. This is only for 1d paramterized curves
+```{r}
+# Shape distance
+# Depends on sampling points. Sample and true should have same number of points.
+# We use the options to make it depend on scale (length should matter). 
+library(fdasrvf)
+
+L2dist <- function(sample_f, true_f){
+  sqrt(sum((sample_f-true_f)^2))
+}
+
+# set scale = T for PCA line
+geodesicDistance <-  function(sample,true,scale=F){
+  # sample and true are shapes with same number of datapoints
+  d <-calc_shape_dist(t(sample), t(true), mode="O", scale=scale, rotation=F)
+  d$d
+}
+
+# For closed case. lambda infty is sample mean
+L2distmean <- function(sample, sample_mean){
+  sqrt(sum(sweep(sample, 2, sample_mean, "-")^2))
+}
+```
+
+
+2D sphere
+
+
+For each shape: ellipse, flower, spiky ball(?) and moon (show bad cases)
+L2 distance  as N increases. Visualizations?
+
+Lambda grid <- 10^(-13) to 10^(-3) , length .out =15?
+
+Should I show L2 distance as iterations increase for a given sample size and lambda grid?
+
+
+
+u we
+Test to make sure it works
+
+```{r}
+set.seed(1)
+N<-300
+data <- flower2d3D(N, noise=0.02)
+X <- data$X
+
+plot_data_3D(X)
+
+fit <- pmeClosed_2d(X, 10^seq(-8,-3, length.out=3), optimize_lambda = F, parallel=F)
+
+
+Nsamp <- 1000
+tseq <- fibonaccisphere(Nsamp)
+plot_data_3D(tseq)
+Xtrue <- flower2d3D(Nsamp, noise=0, t=tseq)$X_true
+plot_data_3D(Xtrue)
+
+
+Y <- rep(0, length(fit$spline_list))
+for(i in 1:length(fit$spline_list))
+{
+  spline <- fit$spline_list[[i]]
+  spline_sample <- spline(tseq)
+  true_sample <- Xtrue
+  
+  Y[i] <- L2dist(spline_sample,  true_sample)*sqrt(4*pi/Nsamp)
+  
+}
+      
+      
+plot(fit$lambda_list, Y, log='x')
+lines(fit$lambda_list, Y)
+  
+
+
+plot_datafit_2d3D(X, fit$spline_list[[1]])
+plot_datafit_2d3D(X, fit$spline_list[[2]])
+plot_datafit_2d3D(X, fit$spline_list[[3]])
+```
+
+```{r}
+plot_datafit_2d3D <- function(X, fit, mytitle="data and fit", col="seagreen"){
+  surf <- genSurface(fit)
+  
+  plot_ly() %>%
+    # Scatter points trace
+    add_markers(x = X[, 1],y = X[, 2], z = X[, 3],
+              type = "scatter3d",
+              mode = "markers",
+              marker = list(size = 2,opacity=0.7),
+              name = "Data points"
+    ) %>%
+    # Overlay line trace
+    add_surface(x=surf[[1]],y=surf[[2]], z=surf[[3]], opacity = 0.3,showscale=F,colorscale="viridis")|>
+    layout(title = mytitle,
+           scene = list(
+             xaxis = list(title = "X"),
+             yaxis = list(title = "Y"),
+             zaxis = list(title = "Z")
+           ))
+}
+
+plot_datafit_2d3D(X, fit$spline_list[[1]])
+
+```
+
+```{r}
+Nsamp <- 1000
+tseq <- fibonaccisphere(Nsamp)
+Xtrue <- flower2d3D(Nsamp, noise=0, t=tseq)$X_true
+
+
+Y <- rep(0, length(fit$spline_list))
+for(i in 1:length(fit$spline_list))
+{
+  spline <- fit$spline_list[[i]]
+  spline_sample <- spline(tseq)
+  true_sample <- Xtrue
+  
+  Y[i] <- L2dist(spline_sample,  true_sample)*sqrt(4*pi/Nsamp)
+  
+}
+Y
+```
+
+# 1d Circle
+
+
+## Simulation code
+
+```{r}
+pmeClosed_1d_periodic_simulation <- function(shape_type,D, Ns,noise, lambdas, gridSize = 1000, max_iter = 20, err_tol=0.01, iso_k = 10,init_iso = F, L2dist_size = 1000, parallel=F,cl=NULL){
+  X <- vector(mode="list", length=length(Ns))
+  trues <- vector(mode="list", length=length(Ns))
+  tcircles <- vector(mode="list", length=length(Ns))
+  
+  
+  # the grid to evaluate at. this is also where we draw the data from.
+  L2dist_grid <- seq(from=0,to=1-1e-6, length.out=L2dist_size)
+  
+  
+  # Initialize data and true sample data
+  if(shape_type == "ellipse" & D==2){
+    
+    for(j in seq_along(Ns)){
+      
+      X[[j]] <- circle1d2D(Ns[j], 1, 2, c(0,0), noise)$X
+      trues[[j]] <- colMeans(X[[j]])#circle1d2D(L2dist_size, 1, 2, c(0,0), 0, t=L2dist_grid)$X
+    }
+    
+  }else if(shape_type =="flower" & D==2){
+    
+    for(j in seq_along(Ns)){
+      X[[j]] <- flower1d2D(Ns[j], 5, noise)$X
+      trues[[j]] <- colMeans(X[[j]])##flower1d2D(L2dist_size,5, 0, t=L2dist_grid)$X
+    }  
+    
+  }
+  
+  # Get initial projection indices for each dataset
+  for(i in 1:length(Ns)){
+    if(D == 2 & !init_iso){
+      tcircles[[i]] <- project_circle(X[[i]])
+    }else{
+      iso2 <- isomap(dist(X[[i]]), ndim=2, k=iso_k)
+      tcircles[[i]] <- project_circle(iso2$points)
+    }
+      
+  }
+  
+  
+  miniproj <- function(Xraw, newSpline){
+    project_grid(Xraw, newSpline, gridSize)
+  }
+  
+  # Setup parallel cluster
+  stop_after <- FALSE
+  if (is.null(cl) && parallel) {
+    numCores <- parallel::detectCores() - 1
+    cl <- makeCluster(numCores)
+    registerDoParallel(cl)
+    stop_after <- TRUE
+  }
+  
+  # run parallel? T or F
+  operator <- if(parallel) `%dopar%` else `%do%` #thanks chatgpt
+  
+  
+  results <- vector(mode="list", length = length(Ns))
+  
+  # edit name to index by N
+  names(results) <- paste0("N_",Ns)
+  
+  for(j in seq_along(Ns)){
+    
+    
+    # Main algorithm loop
+    results[[j]] <-operator( foreach(i = 1:length(lambdas), 
+                                     .packages = c("stats", "pracma", "fdasrvf"),
+                                     .export = c("spline1d_periodic",
+                                                 "project_grid","project_circle", "project_optimize",
+                                                 "spline_error","krt","krst", "L2distmean")), {
+                                                   lambda <- lambdas[i]
+                                                   splines <- list()
+                                                   L2distances <- rep(NA, max_iter+1)
+                                                   geodesicdistance <- rep(NA, max_iter+1)
+                                                   L2index <- 1
+                                                   
+                                                   # Setup first spline fit
+                                                   splines[[1]] <- spline1d_periodic(X[[j]],tcircles[[j]], lambdas[i])
+                                                   
+                                                   # Get first true manifold error
+                                                   L2distances[1] <- L2distmean(splines[[1]](L2dist_grid), trues[[j]])
+                                                   #geodesicdistance[1] <- geodesicDistance(splines[[1]](L2dist_grid), trues[[j]])
+                                                   L2index <- L2index + 1
+                                                   
+                                                   # Setup first projection 
+                                                   tt <- list() # list of t values
+                                                   tt[[1]] <- miniproj(X[[j]],splines[[1]]) # evaluate first projection set
+                                                   
+                                                   # Repeat until error small
+                                                   err <- err_tol + 1
+                                                   iter <- 1
+                                                   Diter <- rep(Inf, max_iter)
+                                                   # Initial error
+                                                   Diter[iter] <- spline_error(X[[j]], tt[[iter]], splines[[iter]])
+                                                   
+                                                   # Iteriate until error convergences
+                                                   while(err > err_tol &  iter < max_iter){
+                                                     iter <- iter+1
+                                                     
+                                                     #  Get newest spline fit
+                                                     splines[[iter]] <- spline1d_periodic(X[[j]], tt[[iter-1]], lambdas[i])
+                                                     # Get  true manifold error
+                                                     L2distances[L2index] <- L2distmean(splines[[iter]](L2dist_grid), trues[[j]])
+                                                     #geodesicdistance[L2index] <- geodesicDistance(splines[[iter]](L2dist_grid), trues[[j]])
+                                                     L2index <- L2index + 1
+                                                     
+                                                     # Calculate new projection
+                                                     tt[[iter]] <- miniproj(X[[j]],splines[[iter]]) # evaluate first projection set
+                                                     
+                                                     # Get newest error
+                                                     Diter[iter] <- spline_error(X[[j]],tt[[iter]], splines[[iter]])
+                                                     
+                                                     # Compare old error
+                                                     err <-abs((Diter[iter] - Diter[iter-1])/Diter[iter-1])
+                                                   }
+                                               
+                                                   lambda_res <- list(
+                                                     lambda = lambdas[i],
+                                                    # spline_sequence = list(
+                                                       splines = splines,
+                                                       projections = tt,
+                                                       max_iter = iter,
+                                                       L2 = L2distances[1:iter]
+                                                       #geodesic = geodesicdistance[1:iter]
+                                                    # ),
+                                                     #diagnostics = list(
+                                                     #  L2 = L2distances[1:iter],
+                                                    #   geodesic = geodesicdistance[1:iter]
+                                                   #  )
+                                                   )
+                                                
+                                                 })
+    
+    # Rename results j
+    names(results[[j]]) <- paste0("lambda_", lambdas)
+    results[[j]]$data <- X[[j]]
+  }
+  
+    on.exit({
+    if (stop_after) stopCluster(cl)
+  }, add = TRUE)
+
+  results
+}
+
+```
+
+
+
+## Simulation Run
+```{r}
+Ns <- c(100,200,300)
+noise <-0.01
+lambdas <- c(1e-6,1e-3)
+results <- pmeClosed_1d_periodic_simulation("ellipse",2,Ns, noise, lambdas, max_iter=5, L2dist_size=300)
+
+
+
+
+library(tidyverse)
+# from chatgpt
+df_L2 <- map_dfr(seq_along(Ns), function(j) {
+  map_dfr(seq_along(lambdas), function(i) {
+    tibble(
+      N      = Ns[j],
+      lambda = lambdas[i],
+      L2_last = tail(results[[j]][[i]]$L2, 1),
+      geod_last = tail(results[[j]][[i]]$geodesic,1)
+    )
+  })
+})
+
+df_L2 %>% ggplot(aes(x =lambda, y=L2_last, col=factor(N))) + geom_point() + geom_line() + scale_x_log10()
+
+ggplot(df_L2, aes(x = N, y = L2_last, col = factor(lambda))) +
+  geom_line() +
+  geom_point()
+
+
+#df_L2 %>% ggplot(aes(x =lambda, y=geod, col=factor(N))) + geom_point() + geom_line() + scale_x_log10()
+
+#ggplot(df_L2, aes(x = N, y = geod_last, col = factor(lambda))) +
+#  geom_line() +
+ # geom_point()
+
+
+
+```
+
+
+## Distance to Sample Mean
+```{r}
+library(latex2exp)
+set.seed(1)
+Ns <- c(100,200,500,1000)
+noise <-0.03
+lambdas <- 10^(-10:2)
+results <- pmeClosed_1d_periodic_simulation("flower",2,Ns, noise, lambdas, max_iter=10, L2dist_size=300, parallel=T)
+saveRDS(results, file = file.path("sim_results", "circle_mean.rds"))
+results<-readRDS("sim_results/circle_mean.rds")
+
+
+# viz
+library(tidyverse)
+df_L2 <- map_dfr(seq_along(Ns), function(j) {
+  map_dfr(seq_along(lambdas), function(i) {
+    tibble(
+      N      = Ns[j],
+      lambda = lambdas[i],
+      L2_last = tail(results[[j]][[i]]$L2, 1)
+      #geod_last = tail(results[[j]][[i]]$geodesic,1)
+    )
+  })
+})
+
+# geod by lambda
+(Sample1d <- df_L2 %>% mutate(N=as.factor(N)) %>% ggplot(aes(x =lambda, y=L2_last, col=N,linetype=N)) + geom_point(aes(shape=N),size=2) + geom_line(linewidth=0.8) + scale_x_log10()  + theme_bw() + geom_hline(yintercept=0, linetype="dashed")+
+  xlab("λ") + ylab("L2 Distance to Sample Mean") +
+     theme(panel.grid=element_blank()))
+
+# geod by N
+#df_L2 %>% ggplot(aes(x =N, y=geod_last, col=factor(lambda))) + geom_point() + geom_line()
+```
+
+
+
+#1d Interval 
+
+## asymptotics of line
+```{r}
+library(tidyverse)
+set.seed(1)
+n <- 100
+t <- seq(0,1,length.out=n)
+X <- t(cbind(t, sin(2*pi*t)))
+X <- rotation2(pi/6)%*% X
+X <- t(X) + rnorm(2*n, sd=0.03)
+lambdas <- c(1e-15, 1e-6,1,10)
+
+fit <- pmeClosed_1d_interval(X, lambdas, parallel=F, max_iter = 10, gridSize=2000)
+
+
+
+S <- seq(from=0,to=1,length.out=1000)
+
+plot(X, pch=16,cex=1)
+cols <- rainbow(length(lambdas))
+for(i in 1:length(lambdas))
+{
+  spl <- fit$spline_list[[i]]
+  lines(spl(S),col=cols[i],lty=i,lwd=3)
+}
+legend("topright",legend = paste0("lambda ", lambdas),lty=1:length(fit),bty="n",col=cols,lwd=3)
+
+# use chatgpt to generate ggplot version
+## points
+df_X <- data.frame(
+  x = X[,1],
+  y = X[,2]
+)
+
+## spline curves
+df_splines <- do.call(
+  rbind,
+  lapply(seq_along(lambdas), function(i) {
+    spl <- fit$spline_list[[i]]
+    Y   <- spl(S)  # assumed m x 2
+    
+    data.frame(
+      x = Y[,1],
+      y = Y[,2],
+      lambda = factor(lambdas[i])
+    )
+  })
+)
+
+ggplot() +
+  geom_point(
+    data = df_X,
+    aes(x = x, y = y),
+    size = 2
+  ) +
+  geom_path(
+    data = df_splines,
+    aes(x = x, y = y, color = lambda, linetype = lambda),
+    linewidth =1
+  ) + theme_bw() + xlab("X") + ylab("Y")
+```
+vs PCA
+
+```{r}
+pca <- prcomp(X, center=T)
+
+pca1 <- pca$rotation[,1]
+slope <- pca1[2]/pca1[1]
+mu <- colMeans(X)
+intr <- mu[2] - slope*mu[1]
+
+
+ggplot() +
+  geom_point(
+    data = df_X,
+    aes(x = x, y = y),
+    size = 2
+  ) + geom_path(data=df_splines %>% filter(lambda==10), aes(x=x,y=y, col="Smoothed Manifold"),size=1.5)+ geom_abline(aes(col="PCA") ,
+slope=slope, intercept=intr,linetype="dashed", size=1.5)+scale_color_manual(
+  values = c(
+    "Smoothed Manifold" = "blue",
+    "PCA" = "red"
+  )
+)
+```
+```{r}
+rm(list = ls()[!sapply(ls(), function(x) is.function(get(x)))])
+```
+
+## Simulation code
+```{r}
+library(cooltools)
+```
+
+```{r}
+pmeClosed_1d_interval_simulation <- function(shape_type, D, Ns, noise, lambdas, gridSize = 1000, max_iter = 10, err_tol=0.01, cl=NULL,parallel=F, k_init = 1, L2dist_size = 1000)
+{
+  # Begin actual code 
+  X <- vector(mode="list", length=length(Ns))
+  trues <- vector(mode="list", length=length(Ns))
+  
+  tinits <- vector(mode="list", length=length(Ns))
+  
+  # L2 dist initialize
+  L2dist <- function(sample_f, true_f){
+    sqrt(sum((sample_f-true_f)^2))
+  }
+  
+  # the grid to evaluate at. this is also where we draw the data from.
+  L2dist_grid <- seq(from=0,to=1-1e-6, length.out=L2dist_size)
+  
+
+  if(shape_type == "sine" & D==2){
+    
+    for(j in seq_along(Ns)){
+      
+      X[[j]] <- sine1d2D(Ns[j], rotation=pi/6,period=2*pi, noise=noise)$X
+      trues[[j]] <- sine1d2D(L2dist_size, rotation=pi/6,period=2*pi, noise=noise)$X
+    }
+  }else if(shape_type =="PCA" & D==2){
+    
+    for(j in seq_along(Ns)){
+      X[[j]] <- sine1d2D(Ns[j], rotation=pi/6,period=2*pi, noise=noise)$X
+      
+      # Get PCA line
+      pca <- prcomp(X[[j]], center=T)
+      pca1 <- pca$rotation[,1]
+      slope <- pca1[2]/pca1[1]
+      mu <- colMeans(X[[j]])
+      intr <- mu[2] - slope*mu[1]
+      
+      trues[[j]] <- cbind(L2dist_grid, slope*L2dist_grid + intr)
+    }  
+    
+  }
+  use_scale <- shape_type=="PCA"
+  
+  # Initialize first projections 
+  k_init<-1
+  
+  for(i in 1:length(Ns)){
+    isores <- iso_try(X[[i]], k_init)
+    iso <- isores$iso
+    k <- isores$k
+    print(paste0("k is ", toString(k)))
+    tinits[[i]] <-normalize(iso$points)
+  }
+
+
+  # Setup parallel cluster
+  # Setup cluster if not provided
+  stop_after <- FALSE
+  if (is.null(cl) && parallel) {
+    numCores <- parallel::detectCores() - 1
+    cl <- makeCluster(numCores)
+    registerDoParallel(cl)
+    stop_after <- TRUE
+  }
+  
+  
+  miniproj <- function(Xraw, newSpline){
+    project_grid(Xraw, newSpline, gridSize)
+  }
+  # run parallel? T or F
+  operator <- if(parallel) `%dopar%` else `%do%` #thanks chatgpt
+  
+  
+  
+  results <- vector(mode="list", length = length(Ns))
+  names(results) <- paste0("N_",Ns)
+  
+  for(j in seq_along(Ns)){
+    
+    
+    
+    # Main algorithm loop
+    results[[j]] <-operator( foreach(i = 1:length(lambdas), 
+                                     .packages = c("stats", "pracma", "fdasrvf"),
+                                     .export = c("spline1d_interval","project_grid", "project_optimize",
+                                                 "spline_error","Rk","normalize", "L2dist", "geodesicDistance")), {
+                                                   lambda <- lambdas[i]
+                                                   splines <- list()
+                                                   L2distances <- rep(NA, max_iter+1)
+                                                   geodesicdistance <- rep(NA, max_iter+1)
+                                                   L2index <- 1
+                                                   
+                                                   # Setup first spline fit
+                                                   splines[[1]] <- spline1d_interval(X[[j]],tinits[[j]], lambdas[i])
+                                                   
+                                                   # Get first true manifold error
+                                                   L2distances[1] <- L2dist(splines[[1]](L2dist_grid), trues[[j]])
+                                                   geodesicdistance[1] <- geodesicDistance(splines[[1]](L2dist_grid), trues[[j]],use_scale)
+                                                   L2index <- L2index + 1
+                                                   
+                                                   
+                                                   
+                                                   # Setup first projection 
+                                                   tt <- list() # list of t values
+                                                   tt[[1]] <-  normalize(miniproj(X[[j]],splines[[1]])) # evaluate first projection set
+                                                   
+                                                   # Repeat until error small
+                                                   err <- err_tol + 1
+                                                   iter <- 1
+                                                   Diter <- rep(Inf, max_iter)
+                                                   # Initial error
+                                                   Diter[iter] <- spline_error(X[[j]], tt[[iter]], splines[[iter]])
+                                                   
+                                                   # Iteriate until error convergences
+                                                   while(err > err_tol &  iter < max_iter){
+                                                     iter <- iter+1
+                                                     
+                                                     #  Get newest spline fit
+                                                     splines[[iter]] <- spline1d_interval(X[[j]], tt[[iter-1]], lambdas[i])
+                                                   
+                                                     # Get  true manifold error
+                                                     L2distances[L2index] <- L2dist(splines[[iter]](L2dist_grid), trues[[j]])
+                                                     geodesicdistance[L2index] <- geodesicDistance(splines[[iter]](L2dist_grid), trues[[j]],use_scale)
+                                                     L2index <- L2index + 1
+                                                     
+                                                     # Calculate new projection
+                                                     tt[[iter]] <-  normalize(miniproj(X[[j]],splines[[iter]]))
+                                                     
+                                                     # Get newest error
+                                                     Diter[iter] <- spline_error(X[[j]],tt[[iter]], splines[[iter]])
+                                                     
+                                                     # Compare old error
+                                                     err <-abs((Diter[iter] - Diter[iter-1])/Diter[iter-1])
+                                                   }
+                                                   
+                                                   
+                                                   lambda_res <- list(
+                                                     lambda = lambdas[i],
+                                                     # spline_sequence = list(
+                                                     splines = splines,
+                                                     projections = tt,
+                                                     max_iter = iter,
+                                                     L2 = L2distances[1:iter],
+                                                     geodesic = geodesicdistance[1:iter]
+                                                     # ),
+                                                     #diagnostics = list(
+                                                     #  L2 = L2distances[1:iter],
+                                                     #   geodesic = geodesicdistance[1:iter]
+                                                     #  )
+                                                   )
+                                                   
+                                                 })
+    
+    # Rename results j
+    names(results[[j]]) <- paste0("lambda_", lambdas)
+    results[[j]]$data <- X[[j]]
+  }
+  
+    on.exit({
+    if (stop_after) stopCluster(cl)
+  }, add = TRUE)
+
+  results
+}
+```
+
+
+
+## PCA Simulation
+```{r}
+library(purrr)
+set.seed(1)
+Ns <- c(100,200,500,1000)
+noise <-0.03
+lambdas <- 10^(-10:2)
+results <- pmeClosed_1d_interval_simulation("PCA",2,Ns, noise, lambdas, max_iter=10, L2dist_size=2000, parallel=T)
+
+#saveRDS(results, file = file.path("sim_results", "line_pca.rds"))
+results<-readRDS("sim_results/line_pca.rds")
+
+
+# viz
+df_L2 <- map_dfr(seq_along(Ns), function(j) {
+  map_dfr(seq_along(lambdas), function(i) {
+    tibble(
+      N      = Ns[j],
+      lambda = lambdas[i],
+      L2_last = tail(results[[j]][[i]]$L2, 1),
+      geod_last = tail(results[[j]][[i]]$geodesic,1)
+    )
+  })
+})
+
+# geod by lambda
+(PCA1d <- df_L2 %>% mutate(N=as.factor(N)) %>% ggplot(aes(x =lambda, y=geod_last, col=N,linetype=N)) + geom_point(aes(shape=N),size=2) + geom_line(linewidth=0.8) + scale_x_log10()  + theme_bw() +  geom_hline(yintercept=0, linetype="dashed")+
+  xlab("λ") + ylab("Geodesic Distance to PCA Line") + theme(panel.grid=element_blank()))
+
+# geod by N
+#df_L2 %>% ggplot(aes(x =N, y=geod_last, col=factor(lambda))) + geom_point() + geom_line()
+
+```
+
+
+
+## Simulation run
+```{r}
+Ns <- c(100,200,500,1000)
+noise <-0.05
+lambdas <- c(1e-6,1e-3)
+results <- pmeClosed_1d_interval_simulation("sine",2,Ns, noise, lambdas, max_iter=5, L2dist_size=2000)
+
+
+
+
+library(tidyverse)
+# from chatgpt
+df_L2 <- map_dfr(seq_along(Ns), function(j) {
+  map_dfr(seq_along(lambdas), function(i) {
+    tibble(
+      N      = Ns[j],
+      lambda = lambdas[i],
+      L2_last = tail(results[[j]][[i]]$L2, 1),
+      geod_last = tail(results[[j]][[i]]$geodesic,1)
+    )
+  })
+})
+
+df_L2 %>% ggplot(aes(x =lambda, y=L2_last, col=factor(N))) + geom_point() + geom_line() + scale_x_log10()
+
+ggplot(df_L2, aes(x = N, y = L2_last, col = factor(lambda))) +
+  geom_line() +
+  geom_point()
+
+
+df_L2 %>% ggplot(aes(x =lambda, y=geod_last, col=factor(N))) + geom_point() + geom_line() + scale_x_log10()
+
+ggplot(df_L2, aes(x = N, y = geod_last, col = factor(lambda))) +
+  geom_line() +
+  geom_point()
+
+
+
+```
+
+
+
+## Extractors
+```{r}
+
+
+# from chatgpt
+df_L2 <- map_dfr(seq_along(Ns), function(j) {
+  map_dfr(seq_along(lambdas), function(i) {
+    tibble(
+      N      = Ns[j],
+      lambda = lambdas[i],
+      L2_last = tail(results[[j]][[i]]$L2distances, 1),
+      geod_last = tail(results[[j]][[i]]$geodesic_distances,1)
+    )
+  })
+})
+
+df_L2 %>% ggplot(aes(x =lambda, y=L2_last, col=factor(N))) + geom_point() + geom_line() + scale_x_log10()
+
+ggplot(df_L2, aes(x = N, y = L2_last, col = factor(lambda))) +
+  geom_line() +
+  geom_point()
+
+
+df_L2 %>% ggplot(aes(x =lambda, y=geod_last, col=factor(N))) + geom_point() + geom_line() + scale_x_log10() +
+  geom_hline(aes(yintercept = 0),linetype="dashed")
+
+ggplot(df_L2, aes(x = N, y = geod_last, col = factor(lambda))) +
+  geom_line() +
+  geom_point()
+
+#S <- seq(from =0,to=1,length.out=1000)
+
+#Nind <- 3
+#lambdaind <- 5
+#plot(X[[Nind]])
+
+#lines(results[[Nind]][[lambdaind]]$splines[[results[[Nind]][[lambdaind]]$max_iter]](S))
+```
+```{r}
+S <- seq(0,1,length.out=100)
+plot(results[[3]][[4]]$splines[[results[[3]][[4]]$max_iter]](S),type="l",lty=2, lwd=2)
+lines(trues[[3]], col="red")
+legend("topright",legend=c("Manifold Fit", "PCA"), col=c("black","red"), lty=c(2,1))
+```
+
+
+
+
+# 2d Sphere
+
+
+## Visualizations
+
+```{r}
+  library(plot3D)
+  set.seed(1)
+  lambdas <- 10^c(-12,-5.5, -3,-2.2)
+  
+  X1 <- flower2d3D(300, petals=6, noise=0.01)$X
+  res <- pmeClosed_2d(X1,lambdas, parallel = F, optimize_lambda=F)
+  
+  
+  X2 <- unifmoon2d3D(300, noise=0.01, bend_radius=2, bend=1.2*pi)$X
+  res2 <- pmeClosed_2d(X2,lambdas, parallel = F, optimize_lambda=F, init_iso=T)
+
+  
+
+  
+  # theta=20, phi =50,xlim=c(-0.7,0.7),ylim=NULL, zlim=c(-0.5,0.5)
+# plotting CV by lambda
+
+  png(filename="testplot.png", width=12, height=8, units="in",res=600)
+  par(mar = c(1.5,2,1.5,2), mfrow=c(2,4), xpd=F)
+  for(i in 1:length(lambdas)){
+    plot_datafit_2d3D_static(X1, res$spline_list[[i]],theta=20, phi =50,bty="g",
+                             title=paste0("λ = ", formatC(lambdas[i],format="e",digits=2)))
+  }
+  for(i in 1:length(lambdas)){
+    plot_datafit_2d3D_static(X2, res2$spline_list[[i]],bty="g",theta=200, phi =40,
+                            title=paste0("λ = ", formatC(lambdas[i],format="e",digits=2)))
+  }
+  
+  
+```
+
+
+
+## Simulation code
+
+```{r}
+pmeClosed_2d_simulation <- function(shape_type, Ns, noise, lambdas, gridSize = 1000, max_iter = 10, err_tol=0.01, cl=NULL,parallel=F, iso_k=10, L2dist_size = 1000){
+  
+  # Begin actual code 
+  X <- vector(mode="list", length=length(Ns))
+  trues <- vector(mode="list", length=length(Ns))
+  
+  tspheres <- vector(mode="list", length=length(Ns))
+  
+  # L2 dist initialize
+  L2dist <- function(sample_f, true_f){
+    sqrt(sum((sample_f-true_f)^2))
+  }
+  
+  # the grid to evaluate at. this is also where we draw the data from.
+  L2dist_grid <- fibonaccisphere(n=L2dist_size)
+  
+  
+  if(shape_type == "ellipse"){
+    
+    for(j in seq_along(Ns)){
+      
+      X[[j]] <- ellipse2d3D(Ns[j], c(1,2,1), noise=noise)
+      trues[[j]] <- colMeans(X[[j]])
+    }
+  }else if(shape_type =="flower"){
+    
+    for(j in seq_along(Ns)){
+      
+      X[[j]] <- flower2d3D(Ns[j], petals=5, noise=noise)$X
+      trues[[j]] <-colMeans(X[[j]])
+      
+    } 
+  }
+  
+  
+  # Initialize first projections 
+  
+  for(i in 1:length(Ns)){
+    
+    if(shape_type != "moon"){
+      datac <- scale(X[[i]],scale=F)
+      tspheres[[i]] <- datac/sqrt(rowSums(datac^2))
+    }
+    else{
+      iso3 <- isomap(dist(X[[i]]), ndim=3, k=iso_k)
+      t3 <- scale(iso3$points,scale=F)
+      spheres[[i]] <-t3 / sqrt(rowSums(t3^2))
+    }
+  }
+
+
+  # Setup parallel cluster
+  # Setup cluster if not provided
+  stop_after <- FALSE
+  if (is.null(cl) && parallel) {
+    numCores <- parallel::detectCores() - 1
+    cl <- makeCluster(numCores)
+    registerDoParallel(cl)
+    stop_after <- TRUE
+  }
+  
+  
+  miniproj <- function(Xraw, newSpline){
+    project_grid(Xraw, newSpline, gridSize)
+  }
+  # run parallel? T or F
+  operator <- if(parallel) `%dopar%` else `%do%` #thanks chatgpt
+  
+  
+  
+  results <- vector(mode="list", length = length(Ns))
+  names(results) <- paste0("N_",Ns)
+  
+  for(j in seq_along(Ns)){
+    
+    
+    
+    # Main algorithm loop
+    results[[j]] <-operator( foreach(i = 1:length(lambdas), 
+                                      .packages = c("stats", "pracma", "cooltools","Riemann"),
+                     .export = c("spline2d","project_optimize2",
+                                 "spline_error","qm","expr","Rpp","m","L2distmean")), {
+                                                   lambda <- lambdas[i]
+                                                   splines <- list()
+                                                   L2distances <- rep(NA, max_iter+1)
+                                                   geodesicdistance <- rep(NA, max_iter+1)
+                                                   L2index <- 1
+                                                   
+                                                   # Setup first spline fit
+                                                   splines[[1]] <- spline2d(X[[j]],tspheres[[j]], lambdas[i])
+                                                   
+                                                   # Get first true manifold error
+                                                   L2distances[1] <- L2distmean(splines[[1]](L2dist_grid), trues[[j]])
+                                                   #geodesicdistance[1] <- geodesicDistance(splines[[1]](L2dist_grid), trues[[j]],use_scale)
+                                                   L2index <- L2index + 1
+                                                   
+                                                  # Setup first projection 
+                                                   tt <- list() # list of t values
+                                                   tt[[1]] <-  project_optimize2(X[[j]], splines[[1]], tspheres[[j]]) # evaluate first projection set
+                                                   
+                                                   # Repeat until error small
+                                                   err <- err_tol + 1
+                                                   iter <- 1
+                                                   Diter <- rep(Inf, max_iter)
+                                                   # Initial error
+                                                   Diter[iter] <- spline_error(X[[j]],tt[[iter]], splines[[iter]])
+                                                   
+                                                   # Iteriate until error convergences
+                                                   while(err > err_tol &  iter < max_iter){
+                                                     iter <- iter+1
+                                                     
+                                                     #  Get newest spline fit
+                                                     splines[[iter]] <- spline2d(X[[j]], tt[[iter-1]], lambdas[i])
+                                                   
+                                                     # Get  true manifold error
+                                                     L2distances[L2index] <- L2distmean(splines[[iter]](L2dist_grid), trues[[j]])
+                                                     #geodesicdistance[L2index] <- geodesicDistance(splines[[iter]](L2dist_grid), trues[[j]],use_scale)
+                                                     L2index <- L2index + 1
+                                                     
+                                                     # Calculate new projectio
+                                                     tt[[iter]] <-  project_optimize2(X[[j]], splines[[iter]], tt[[iter-1]])
+                                      
+                                                     # Get newest error
+                                                     Diter[iter] <- spline_error(X[[j]],tt[[iter]], splines[[iter]])
+                                                     
+                                                     # Compare old error
+                                                     err <-abs((Diter[iter] - Diter[iter-1])/Diter[iter-1])
+                                                   }
+                                                   
+                                                   
+                                                   lambda_res <- list(
+                                                     lambda = lambdas[i],
+                                                     # spline_sequence = list(
+                                                     splines = splines,
+                                                     projections = tt,
+                                                     max_iter = iter,
+                                                     L2 = L2distances[1:iter]
+                                                    # geodesic = geodesicdistance[1:iter]
+                                                     # ),
+                                                     #diagnostics = list(
+                                                     #  L2 = L2distances[1:iter],
+                                                     #   geodesic = geodesicdistance[1:iter]
+                                                     #  )
+                                                   )
+                                                   
+                                                 })
+    
+    # Rename results j
+    
+    names(results[[j]]) <- paste0("lambda_", lambdas)
+    results[[j]]$data <- X[[j]]
+  }
+  results
+}
+```
+
+## Simulation run
+```{r}
+Ns <- c(100,200)
+noise <-0.01
+lambdas <- c(1e-6,1e-3)
+results <- pmeClosed_2d_simulation("flower",Ns, noise, lambdas, max_iter=5, L2dist_size=300,parallel=F)
+
+S <- fibonaccisphere(n=1000)
+results$N_100$`lambda_1e-06`$max_iter
+plot_surf(results$N_100$`lambda_1e-06`$splines[[1]])
+
+
+plot_surf(results$N_200$lambda_0.001$splines[[2]])
+
+plot_datafit_2d3D(results$N_100$data,results$N_100$`lambda_1e-06`$splines[[1]] )
+
+
+```
+
+## Distance to sample mean, sphere
+```{r}
+set.seed(1)
+Ns <- c(100,200,500,1000)
+noise <-0.03
+lambdas <- 10^(-10:0)
+results <- pmeClosed_2d_simulation("flower",Ns, noise, lambdas, max_iter=10, L2dist_size=1000, parallel=T)
+saveRDS(results, file = file.path("sim_results", "sphere_mean.rds"))
+results<-readRDS("sim_results/sphere_mean.rds")
+
+
+# viz
+library(tidyverse)
+df_L2 <- map_dfr(seq_along(Ns), function(j) {
+  map_dfr(seq_along(lambdas), function(i) {
+    tibble(
+      N      = Ns[j],
+      lambda = lambdas[i],
+      L2_last = tail(results[[j]][[i]]$L2, 1)
+      #geod_last = tail(results[[j]][[i]]$geodesic,1)
+    )
+  })
+})
+
+# geod by lambda
+(Sample2d <- df_L2 %>% mutate(N=as.factor(N)) %>% ggplot(aes(x =lambda, y=L2_last, col=N,linetype=N)) + geom_point(aes(shape=N),size=2) + geom_line(linewidth=0.8) + scale_x_log10()  + theme_bw() + geom_hline(yintercept=0, linetype="dashed")+
+  xlab("λ") + ylab("L2 Distance to Sample Mean")  +theme(panel.grid=element_blank()) + ggtitle("(iii) 2-Sphere"))
+
+# geod by N
+#df_L2 %>% ggplot(aes(x =N, y=geod_last, col=factor(lambda))) + geom_point() + geom_line()
+```
+
+# PCA sim full
+```{r}
+#ibrary(latex2exp)
+set.seed(1)
+Ns <- c(100,200,500,1000)
+noise <-0.03
+lambdas1 <- 10^(-10:2)
+
+lambdas3 <- 10^(-10:0)
+#results1 <- pmeClosed_1d_periodic_simulation("flower",2,Ns, noise, lambdas1, max_iter=10, L2dist_size=300, parallel=T)
+#saveRDS(results1, file = file.path("sim_results", "circle_mean.rds"))
+#results2 <- pmeClosed_1d_interval_simulation("PCA",2,Ns, noise, lambdas1, max_iter=10, L2dist_size=2000, parallel=T)
+#saveRDS(results2, file = file.path("sim_results", "line_pca.rds"))
+#results3 <- pmeClosed_2d_simulation("flower",Ns, noise, lambdas3, max_iter=10, L2dist_size=1000, parallel=T)
+#saveRDS(results3, file = file.path("sim_results", "sphere_mean.rds"))
+
+results1<-readRDS("sim_results/circle_mean.rds")
+results2<-readRDS("sim_results/line_pca.rds")
+results3<-readRDS("sim_results/sphere_mean.rds")
+
+
+
+# viz
+library(tidyverse)
+df_circ <- map_dfr(seq_along(Ns), function(j) {
+  map_dfr(seq_along(lambdas1), function(i) {
+    tibble(
+      N      = Ns[j],
+      lambda = lambdas1[i],
+      L2_last = tail(results1[[j]][[i]]$L2, 1)
+      #geod_last = tail(results[[j]][[i]]$geodesic,1)
+    )
+  })
+})
+
+# viz
+df_line <- map_dfr(seq_along(Ns), function(j) {
+  map_dfr(seq_along(lambdas1), function(i) {
+    tibble(
+      N      = Ns[j],
+      lambda = lambdas1[i],
+      L2_last = tail(results2[[j]][[i]]$L2, 1),
+      geod_last = tail(results2[[j]][[i]]$geodesic,1)
+    )
+  })
+})
+
+# viz
+library(tidyverse)
+df_sph <- map_dfr(seq_along(Ns), function(j) {
+  map_dfr(seq_along(lambdas3), function(i) {
+    tibble(
+      N      = Ns[j],
+      lambda = lambdas3[i],
+      L2_last = tail(results3[[j]][[i]]$L2, 1)
+      #geod_last = tail(results[[j]][[i]]$geodesic,1)
+    )
+  })
+})
+
+leg <- list(theme(legend.background=element_rect(fill="white",color="black"), panel.grid=element_blank(),aspect.ratio=1))
+
+
+# geod by lambda
+(Sample1d <- df_circ %>% mutate(N=as.factor(N)) %>% ggplot(aes(x =lambda, y=L2_last, col=N,linetype=N)) + geom_point(aes(shape=N),size=2) + geom_line(linewidth=0.8) + scale_x_log10()  + theme_bw() + geom_hline(yintercept=0, linetype="dashed")+
+  xlab("λ") + ylab("L2 Distance to Sample Mean") +
+     theme(panel.grid=element_blank())  +  ggtitle("(ii) Circle")+leg)
+
+
+# geod by lambda
+(PCA1d <- df_line %>% mutate(N=as.factor(N)) %>% ggplot(aes(x =lambda, y=geod_last, col=N,linetype=N)) + geom_point(aes(shape=N),size=2) + geom_line(linewidth=0.8) + scale_x_log10()  + theme_bw() +  geom_hline(yintercept=0, linetype="dashed")+
+  xlab("λ") + ylab("Geodesic Distance to PCA Line") + theme(panel.grid=element_blank()) +ggtitle("(i) Interval")+leg)
+
+# geod by lambda
+(Sample2d <- df_sph %>% mutate(N=as.factor(N)) %>% ggplot(aes(x =lambda, y=L2_last, col=N,linetype=N)) + geom_point(aes(shape=N),size=2) + geom_line(linewidth=0.8) + scale_x_log10()  + theme_bw() + geom_hline(yintercept=0, linetype="dashed")+
+  xlab("λ") + ylab("L2 Distance to Sample Mean")  +theme(panel.grid=element_blank()) + ggtitle("(iii) 2-Sphere")+leg)
+
+
+(myplt<-PCA1d + Sample1d + Sample2d + plot_layout(guides="collect") & theme(legend.position="bottom"))
+ggsave("sim_results/dist_lambda_infty.png",width=12, height=4, dpi=600)
+
+
+```
+
+
+
+# Isomap unwound example
+
+```{r}
+library(scico)
+set.seed(1)
+# data set
+n <- 300
+X <- moon1d2D(n, 1, 2, 0.06)
+colz <- rainbow(nrow(X))
+colz <- scico(nrow(X),palette= "romaO")
+
+# plot
+par(mfrow=(c(1,2)))
+plot(X, col =colz)
+iso <- isomap(dist(X), ndim=2, k=10)
+plot(iso$points,col =colz)
+
+
+# pme
+set.seed(1)
+
+spl_naive_first <- pmeClosed_1d_periodic(X, c(1e-8), init_iso=F, max_iter=1)
+spl_iso_first<- pmeClosed_1d_periodic(X, c(1e-8), init_iso=T,max_iter=1)
+
+spl_naive <- pmeClosed_1d_periodic(X, c(1e-8), init_iso=F, max_iter=10)
+spl_iso<- pmeClosed_1d_periodic(X, c(1e-8), init_iso=T,max_iter=10)
+
+S <- seq(0,1,length.out=1000)
+```
+
+```{r}
+
+
+par(mfrow=c(1,2))
+xlim <- c(1.,0.9)*c(min(X[,1]), max(X[,1]))
+ylim <-c(1.,0.9)*c(min(X[,2]), max(X[,2]))
+plot(spl_naive_first$spline_list[[1]](S), asp=1, type="l", col="red", xlim=xlim,ylim=ylim)
+lines(spl_iso_first$spline_list[[1]](S),asp=1, col="blue", xlim=xlim,ylim=ylim, lty=2)
+plot(spl_naive$spline_list[[1]](S), asp=1, type="l", col="red", xlim=xlim,ylim=ylim, lwd=2)
+lines(spl_iso$spline_list[[1]](S), asp=1, col="blue", xlim=xlim,ylim=ylim,lwd=2,lty=2)
+
+
+
+#plot(spl_iso_first$spline_list[[1]](S), asp=1, type="l", col="red", xlim=xlim,ylim=ylim,lty=2)
+#lines(spl_naive_first$spline_list[[1]](S),asp=1, col="blue", xlim=xlim,ylim=ylim)
+#plot(spl_iso$spline_list[[1]](S), asp=1, type="l", col="red", xlim=xlim,ylim=ylim,lty=2, lwd=2)
+#lines(spl_naive$spline_list[[1]](S), asp=1, col="blue", xlim=xlim,ylim=ylim,lwd=2)
+
+#par(mfrow=c(1,2))
+m <- matrix(1:3, nrow=1, byrow=T)
+par(mfrow=c(1,3))
+xlim <- c(1.,0.9)*c(min(X[,1]), max(X[,1]))
+ylim <-c(1.,0.9)*c(min(X[,2]), max(X[,2]))
+plot(spl_naive_first$spline_list[[1]](S), asp=1, type="l", col="red", xlim=xlim,ylim=ylim,lwd=2)
+lines(spl_iso_first$spline_list[[1]](S),asp=1, col="blue", xlim=xlim,ylim=ylim, lty=2,lwd=2)
+plot(spl_naive$spline_list[[1]](S), asp=1, type="l", col="red", xlim=xlim,ylim=ylim, lwd=2)
+lines(spl_iso$spline_list[[1]](S), asp=1, col="blue", xlim=xlim,ylim=ylim,lwd=2,lty=2)
+plot(1,type="n", axes=F,xlab="",ylab="")
+legend(x="top", legend=c("ISOMAP into Circle", "Naive Circle"), col = c("red","blue"),lty=c(1,2),lwd=2)
+
+
+```
+
+```{r}
+#gpt
+nf  <- spl_naive_first$spline_list[[1]](S)
+if1 <- spl_iso_first$spline_list[[1]](S)
+nc  <- spl_naive$spline_list[[1]](S)
+ic  <- spl_iso$spline_list[[1]](S)
+
+df <- rbind(
+  data.frame(s = S, x = nf[,1], y = nf[,2],
+             Method = "Naive", Stage = "Initial"),
+
+  data.frame(s = S, x = if1[,1], y = if1[,2],
+             Method = "ISOMAP", Stage = "Initial"),
+
+  data.frame(s = S, x = nc[,1], y = nc[,2],
+             Method = "Naive", Stage = "Converged"),
+
+  data.frame(s = S, x = ic[,1], y = ic[,2],
+             Method = "ISOMAP", Stage = "Converged")
+)
+df$Method <- factor(df$Method, levels = c("Naive", "ISOMAP"))
+df$Stage  <- factor(df$Stage, levels = c("Initial", "Converged"))
+
+
+df %>% ggplot(aes(x=x,y=y, col=Method, linetype = Method)) + geom_path(linewidth=1) + facet_wrap(~Stage) + theme_bw() +  theme( panel.grid=element_blank()) + scale_color_manual(values=c("Naive"= "Red", "ISOMAP"="blue")) +
+  theme(legend.position="bottom",
+          legend.background=element_rect(fill="white",color="black"), panel.grid=element_blank(),aspect.ratio=1)
+ggsave("sim_results/isomap_unwind_first_vs_converged.png", width=10, height = 5, dpi=300)
+
+```
+
+ISOMAP 1d 3D case
+
+
+```{r}
+library(plotly)
+
+n <- 2000
+t <- seq(0, 1, length.out = n)
+
+x <- cos(2*pi*t) + 0.35*cos(6*pi*t + 0.3)
+y <- sin(2*pi*t) + 0.35*sin(6*pi*t + 0.7)
+z <- 0.4*sin(6*pi*t + 0.2)
+
+fig <- plot_ly(
+  x = x, y = y, z = z,
+  type = "scatter3d",
+  mode = "lines"
+)
+
+fig
+```
+
+
+# Demo Data example
+
+## Generate data
+```{r}
+# Flower
+dataCircle <- flower1d2D(300, 5, 0.04)$X
+plot(dataCircle,asp=1)
+# Half flower
+dataInterval <- halfflower1d2D(300, 5, 0.04)$X
+plot(dataInterval, asp=1)
+
+
+```
+## TDA Sim 
+
+Homemade ggplot version
+
+
+```{r}
+library(TDA)
+
+
+
+
+# ribbon val
+runTDA_1d2D <- function(data, alpha=0.01, boot_size=30)
+{
+  Xlim <- c(min(data[,1]), max(data[,1]))
+  Ylim <- c(min(data[,2]), max(data[,2]))
+  lim <- cbind(Xlim, Ylim)
+  by <- 0.01
+  
+  Diag <- gridDiag(data, distFct, lim = lim, by = by)
+  boot <- bootstrapDiagram(X=data, FUN=distFct, lim = lim,by=by, parallel=T,alpha=alpha,B=boot_size)
+  
+  list(Diag=Diag, boot=boot, alpha =alpha)
+}
+
+tdaCircle <-runTDA_1d2D(dataCircle, alpha=0.01,boot_size=30)
+tdaInterval <-runTDA_1d2D(dataInterval, alpha=0.01,boot_size=30)
+
+```
+
+
+# TDA Plots
+
+```{r}
+
+# Plot code
+tda_2_plot <- function(tda_res){
+  Diag <- tda_res$Diag
+  boot <- tda_res$boot
+  alpha <- tda_res$alpha
+  
+  conf_label <- paste0(round((1 - alpha) * 100), "% confidence band")
+  
+  pd_df <- Diag$diagram %>% unclass() %>% as.data.frame()
+  
+  grid_points <- seq(min(pd_df$Birth)-1, max(pd_df$Birth)+1, length.out = 100)
+  
+  #ribbon_df <- data.frame(
+  #  x = c(grid_points - boot, rev(grid_points + boot)),
+  #  y = c(grid_points + boot, rev(grid_points - boot)),
+  #  Band=factor(conf_label))
+  
+    ribbon_df <- data.frame(
+    x= c(grid_points, rev(grid_points)),
+    y=c(grid_points + 2*boot,rev(grid_points)),
+    Band = conf_label
+  )
+  
+  
+
+  
+   pd_df %>%  
+    ggplot() + 
+    geom_point(aes(x=Birth,y=Death, color = factor(dimension), shape=factor(dimension)),size=2) +
+    scale_color_manual(name="(a & d) Dimension",values=c("0"="black", "1"="red")) +
+    scale_shape_manual(name="(a & d) Dimension",values = c("0" = 16, "1" = 2)) +
+    geom_abline(slope=1,intercept=0)  + 
+    geom_polygon(data=ribbon_df, aes(x=x,y=y, fill = Band),alpha=0.2) + 
+    theme_bw() + 
+    theme(panel.grid=element_blank())+ 
+    scale_fill_manual(values = setNames("red", levels(ribbon_df$Band)), name = "(a & d) Band")+
+     #xlim(c(0,1))+ylim(c(0,1))
+      coord_cartesian(xlim = c(0, 1), ylim = c(0, 1))
+}
+
+(plotA <- tda_2_plot(tdaCircle) + ggtitle("(a)")+theme(legend.background=element_rect(fill="white",color="black")))
+
+(plotD <- tda_2_plot(tdaInterval) + ggtitle("(d)")+theme(legend.background=element_rect(fill="white",color="black")))
+
+
+
+```
+
+
+## Show PME fits wtih different lambda values
+
+```{r}
+lambdas <- 10^c(-12, -10, -8, -6, -4, -2,0)
+
+resA <- pmeClosed_1d_periodic(dataA, lambdas, parallel=T, optimize_lambda = F)
+resB <- pmeClosed_1d_interval(dataB, lambdas, parallel=T, optimize_lambda = F)
+
+dfA <- list_to_df(resA, "S1")
+dfB <- list_to_df(resB, "interval")
+  
+(plotB <-df_plot_1d2D(dataA, dfA) + theme(panel.grid=element_blank()) + ggtitle("(b)")+
+  geom_point(data=dfA %>% filter(lambda==1),aes(x=x,y=y, col=as.factor(lambda)),show.legend=F) + theme(aspect.ratio=1) + scale_color_discrete(name="(b & e) λ"))
+  
+  
+(plotE <-df_plot_1d2D(dataB, dfB) + theme(aspect.ratio=1) + theme(panel.grid=element_blank()) + ggtitle("(e)")+
+     theme(aspect.ratio=1)  + scale_color_discrete(name="(b & e) λ"))
+
+
+```
+
+## Functional plots
+
+```{r}
+library(scales)
+res_to_alpha_df <- function(result){
+
+  df_list <- Map(function(alpha, lam, ms) {
+    
+    values <- rowSums(alpha) * lam + ms
+    
+    data.frame(
+      lambda    = lam,
+      iteration = seq_len(nrow(alpha)),
+      value     = values
+    )
+    
+  },
+  result$alpha_list,
+  result$lambda_list,
+  result$mean_sq_list)
+  
+  do.call(rbind, df_list)
+}
+
+
+alphaA <- res_to_alpha_df(resA)
+alphaB <- res_to_alpha_df(resB)
+
+(plotC <-  alphaA %>% filter(lambda==1e-8) %>% ggplot(aes(x=iteration, y = value)) + geom_point() + geom_line() + theme_bw()+ theme(panel.grid=element_blank())+ ggtitle("(c)") +
+  scale_x_continuous(breaks=breaks_pretty(max(alphaA %>% filter(lambda==1e-8) %>% pull(iteration) %>% max()))) + xlab("Iteration") + ylab("Cost Functional"))
+
+(plotF <-   alphaB %>% filter(lambda==1e-8) %>% ggplot(aes(x=iteration, y = value)) + geom_point() + geom_line() + theme_bw()+ theme(panel.grid=element_blank())+ ggtitle("(f)") +
+  scale_x_continuous(breaks=breaks_pretty(max(alphaB %>% filter(lambda==1e-8) %>% pull(iteration) %>% max())))+ xlab("Iteration") + ylab("Cost Functional"))
+
+```
+
+## Combined results
+
+```{r}
+library(patchwork)
+
+col1 <- plotA / plotD / guide_area()+ plot_layout(guides="collect") & theme(legend.position="bottom",
+    legend.box="vertical")  
+  
+col2 <- (plotB+plotC) / (plotE+plotF) / guide_area() + plot_layout(guides="collect") & theme(legend.position="bottom",legend.box="vertical")
+
+(col1 |  col2) +theme(
+    plot.margin = margin(10, 10, 10, 10),   # top, right, bottom, left in pts
+    legend.position = "bottom",
+  )
+
+  
+```
+
+```{r}
+col1 <- plotA / plotD  + plot_layout(guides="collect") & theme(legend.position="bottom",
+    legend.box="vertical")  
+  
+col2 <- (plotB) / (plotE)  + plot_layout(guides="collect") & theme(legend.position="bottom",legend.box="vertical")
+
+col3 <- plotC / plotF 
+
+plot_demo_new <- (col1 |  col2  | col3) +theme(
+    plot.margin = margin(10, 10, 10, 10),   # top, right, bottom, left in pts
+    legend.position = "bottom",
+  )
+
+
+ggsave("sim_results/demo_pic1_new.png",width = 10, height = 6, dpi = 600)
+```
+
+
+# Demo Monte Carlo
+
+## Run simulation
+```{r}
+N <- c(100, 250, 500, 1000)
+
+
+
+R <- 100 # 5 repetitions each
+noise <- 0.04
+results <- vector(mode="list", length = length(N))
+names(results) <- paste0("N_",N)
+lambda <- 1e-8
+
+# Setup cluster
+numCores <- parallel::detectCores() - 1
+    cl <- makeCluster(numCores)
+    registerDoParallel(cl)
+
+
+# Begin
+operator1 <- `%dopar%`
+results <-operator1( foreach(i = 1:length(N), 
+                              .packages = c("stats", "pracma", "foreach"),
+                              .export = c("spline1d_periodic","project_grid","project_circle", "project_optimize",
+                                          "spline_error","krt","krst")), {
+                                                   
+                                                   S <- seq(0,1,length.out=500)
+                                                   # Setup Data generating curve
+                                                   f_true <- flower1d2D(500,5,noise=0, t=S)$X
+                                                   
+                                                   df <- data.frame(t=S, x=f_true[,1],y=f_true[,2], repetition = 0)
+                                                   
+                                                   for(j in 1:R){
+                                                     # Generate sample
+                                                     data_R <- flower1d2D(N[i], 5, noise=noise)$X
+                                                     spline_R <- pmeClosed_1d_periodic(data_R, lambda=lambda, 
+                                                                                       parallel=F, optimize_lambda =F,
+                                                                                       approx=F)
+                                                     
+                                                     spl <- spline_R$spline_list[[1]](S)
+                                                     df <- rbind(df, data.frame(t=S, x=spl[,1], y=spl[,2],repetition=j))
+                                                   }
+                                                   df
+                                                 }
+                             
+    )
+    
+# close cluster
+ stopCluster(cl)
+
+ 
+ saveRDS(results, "sim_results/monte_carlo_results.rds")
+```
+
+## Plots
+
+Base R
+```{r fig.height=4, fig.width=12}
+#xlim ylim
+
+results_N <- do.call(rbind, lapply(seq_along(results), function(i){
+  df <- results[[i]]
+  df$N <- N[i]
+  df
+})) %>% as.data.frame()
+
+D <- max(abs(range(results_N$y)), abs(range(results_N$x)))
+
+lims <- c(-D,D)
+
+
+png("sim_results/PME_monte_carlo_star2.png", width=12, height = 4, units="in",res=600)
+par(mfrow=c(1,4),oma = c(4, 0, 0, 0))
+for(i in 1:length(results)){
+  res <- results[[i]]
+  
+  true_line_data <- res %>% filter(repetition==0)
+  plot(true_line_data$x, true_line_data$y, type="n", xlab="x",ylab="y",
+       main=paste0("N = ", N[i]),asp=1, xlim=lims, ylim=lims)
+  # add other lines
+  for(j in 1:max(res$repetition)){
+    line_data <- res %>% filter(repetition==j)
+    lines(line_data$x, line_data$y, col=alpha("blue", alpha=0.3))
+  }
+  lines(true_line_data$x, true_line_data$y, type="l", col="red", lwd=2)
+}
+# add legend
+par(xpd = NA)
+mtext(side = 1, line = 1, text = "", outer = TRUE)
+legend(x=-7.7, y=-2.2,
+       legend = c("Sample Curves", "True Curve"),
+       col = c("blue","red"),
+       lty = 1,
+       horiz = T,
+       bty = "o")
+
+dev.off()
+```
+
+
+```{r}
+
+library(tidyverse)
+library(patchwork)
+
+plot_list <- vector(mode="list",length=length(N))
+for(i in seq_along(N)){
+  mydf <- results[[i]]
+  # plot true
+  plot_list[[i]] <-mydf %>% mutate(group = ifelse(repetition == 0, "True", "Sample")) %>% ggplot(aes(x=x,y=y, color = group)) + geom_path(linewidth=0.1, alpha=0.2) +
+    scale_alpha_manual(name=NULL,values=c("True" = 1, "Sample"=0.3)) + scale_color_manual(name=NULL,values=c("True"="red", "Sample"="blue")) + theme_bw()+
+    ggtitle(paste0("N = ", N[i])) +theme(panel.grid=element_blank(), 
+                                         legend.background=element_rect(fill="white",color="black", linewidth=0.2),aspect.ratio = 1)
+
+  if(c(i !=2)){
+    plot_list[[i]] <- plot_list[[i]] + theme(legend.position="none") + guides(alpha="none",color="none")
+  }
+  
+}
+
+
+plot_result <- (plot_list[[1]] | plot_list[[2]] | plot_list[[3]] | plot_list[[4]]) & plot_layout(guides="collect") & theme(legend.position="bottom",
+                                                                                                            plot.margin = margin(10, 10, 10, 10))
+
+
+ggsave("sim_results/PME_monte_carlo_star.png", plot_result, width=10, height=6, dpi=600)
+```
+
+# Demo Lambda CV Method
+
+
+# changes
+1. Do not save spline lists. Just iterate.
+```{r}
+set.seed(1)
+N <- 5000
+dataCircle <- flower1d2D(N, 5, 0.04)$X
+
+lambdas <- 10^c(seq(-12,0, length.out=100))
+
+result_lambdas <- pmeClosed_1d_periodic(dataCircle, lambdas, optimize_lambda=T,parallel=T,lvp_grid = 500)
+
+result_lambdas <- pmeClosed_1d_periodic_mem(dataCircle, lambdas, optimize_lambda=T,parallel=T,lvp_grid = 5*N)
+
+rm(result_lambdas); gc()
+```
+
+Plots
+```{r}
+# CV vs lambda
+#
+plotCV<-result_lambdas$cv %>% as.data.frame() %>% ggplot(aes(x=lambda, y=cv)) + geom_point()+ scale_x_log10() + theme_bw()+
+  theme(panel.grid=element_blank()) + ylab("Coefficient of Variation") + xlab("λ")+ ggtitle("(i) CV of Residuals vs λ")
+
+plotM<-result_lambdas$vh_mean %>% as.data.frame() %>% ggplot(aes(x=lambda, y=vh_mean)) + geom_point()+ scale_x_log10() + theme_bw()+
+  theme(panel.grid=element_blank()) + ylab("Mean Squared Residual") + xlab("λ")+ ggtitle("(ii) Mean of Residuals vs λ")
+
+plotSD<- result_lambdas$vh_sd %>% as.data.frame() %>% ggplot(aes(x=lambda, y=vh_sd)) + geom_point()+ scale_x_log10() + theme_bw()+
+  theme(panel.grid=element_blank())+ ylab("Standard Deviation") + xlab("λ")+ ggtitle("(iii) SD of Residuals vs λ")
+
+
+S <- seq(0,1,length.out=500)
+# Setup Data generating curve
+f_true <- flower1d2D(500,5,noise=0, t=S)$X
+df <- data.frame(t=S, x=f_true[,1],y=f_true[,2], repetition = 0)
+
+lambda_df <- cbind(index = seq_along(lambdas), lambda=lambdas) %>% as.data.frame()
+lambdasub <- lambda_df %>% filter(lambda > 10^-9 & lambda < 10^-7)
+
+for(j in lambdasub$index){
+  # Generate sample
+
+  spl <- result_lambdas$spline_list[[j]](S)
+  df <- rbind(df, data.frame(t=S, x=spl[,1], y=spl[,2],repetition=j))
+}
+
+
+plotFit <- df %>% mutate(group = ifelse(repetition == 0, "True", "Sample")) %>% ggplot()+  geom_point(data=data.frame(x=dataCircle[,1], y=dataCircle[,2], group="Data"),aes(x=x,y=y, col=group, alpha=group),size=0.7)+ geom_path(aes(x=x,y=y,color = group,alpha = group),linewidth=0.8) +
+    scale_alpha_manual(values=c("True" = 1, "Sample"=0.3, "Data"=1)) + scale_color_manual(values=c("True"="red", "Sample"="blue","Data"="black")) + theme_bw()+
+     theme(panel.grid=element_blank())+
+    theme(legend.background=element_rect(fill="white",color="black")) + ggtitle("(iv) Fits in Convex Region")
+
+```
+
+```{r}
+library(patchwork)
+final_plot <-plotCV | plotM | plotSD | plotFit
+
+ggsave("sim_results/cv_demo.png",width=24,height=6, dpi=600)
+```
+
+
+```{r}
+set.seed(1)
+N <- 1000
+dataCircle <- flower1d2D(N, 5, 0.04)$X
+
+lambdas <- 10^c(seq(-12,0, length.out=100))
+
+result_lambdas <- pmeClosed_1d_periodic(dataCircle, lambdas, optimize_lambda=T,parallel=T, lvp_grid=5*N)
+
+# CV vs lambda
+#
+```
+
+
+```{r}
+plotCV<-result_lambdas$cv %>% as.data.frame() %>% ggplot(aes(x=lambda, y=cv)) + geom_point()+ scale_x_log10() + theme_bw()+
+  theme(panel.grid=element_blank()) + ylab("Coefficient of Variation") + xlab("λ")+ ggtitle("(i) CV of Residuals vs λ")
+
+plotM<-result_lambdas$vh_mean %>% as.data.frame() %>% ggplot(aes(x=lambda, y=vh_mean)) + geom_point()+ scale_x_log10() + theme_bw()+
+  theme(panel.grid=element_blank()) + ylab("Mean Squared Residual") + xlab("λ")+ ggtitle("(ii) Mean of Residuals vs λ")
+
+plotSD<- result_lambdas$vh_sd %>% as.data.frame() %>% ggplot(aes(x=lambda, y=vh_sd)) + geom_point()+ scale_x_log10() + theme_bw()+
+  theme(panel.grid=element_blank())+ ylab("Standard Deviation") + xlab("λ")+ ggtitle("(iii) SD of Residuals vs λ")
+
+
+S <- seq(0,1,length.out=500)
+# Setup Data generating curve
+f_true <- flower1d2D(500,5,noise=0, t=S)$X
+df <- data.frame(t=S, x=f_true[,1],y=f_true[,2], repetition = 0)
+
+lambda_df <- cbind(index = seq_along(lambdas), lambda=lambdas) %>% as.data.frame()
+lambdasub <- lambda_df %>% filter(lambda > 10^-9 & lambda < 10^-7)
+
+for(j in lambdasub$index){
+  # Generate sample
+
+  spl <- result_lambdas$spline_list[[j]](S)
+  df <- rbind(df, data.frame(t=S, x=spl[,1], y=spl[,2],repetition=j))
+}
+
+
+plotFit <- df %>% mutate(group = ifelse(repetition == 0, "True", "Sample")) %>% ggplot()+  geom_point(data=data.frame(x=dataCircle[,1], y=dataCircle[,2], group="Data"),aes(x=x,y=y, col=group, alpha=group),size=0.7)+ geom_path(aes(x=x,y=y,color = group,alpha = group),linewidth=0.8) +
+    scale_alpha_manual(values=c("True" = 1, "Sample"=0.3, "Data"=1)) + scale_color_manual(values=c("True"="red", "Sample"="blue","Data"="black")) + theme_bw()+
+     theme(panel.grid=element_blank())+
+    theme(legend.background=element_rect(fill="white",color="black")) + ggtitle("(iv) Fits in Convex Region")
+
+
+library(patchwork)
+final_plot <-plotCV | plotM | plotSD | plotFit
+
+ggsave("sim_results/cv_demo2.png",width=24,height=6, dpi=600)
+```
+
+
+
+

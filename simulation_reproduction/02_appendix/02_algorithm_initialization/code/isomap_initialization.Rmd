@@ -1,0 +1,78 @@
+---
+title: "(39) iso test"
+author: "Christopher Perez"
+date: "2026-03-09"
+output: html_document
+---
+
+Isomap 1d vs isomap 2d
+
+```{r}
+library(vegan)
+
+
+
+
+```
+
+
+Circle
+```{r}
+X <- moon1d2D(300, noise=0.02)
+ftrue <- moon1d2D(1000, noise=0)
+S <- seq(0,1,0.001)
+
+# isomap 1-dim
+isoinit <- isomap(dist(X), ndim=1, k=10)
+fit <- spline1d_periodic(X, isoinit$points, 1e-6)
+png("sim_results/iso_1d_2d.png",width=8, height = 4, units="in",res=600)
+par(mfrow=c(1,2))
+plot(ftrue, type="l", asp=1, col="red", main="(i)")
+lines(fit(S),col="blue",lty="dashed")
+
+# isomap 2-dim into project circle
+isoinit2 <- isomap(dist(X), ndim=2, k=10)
+fit2 <- spline1d_periodic(X, project_circle(isoinit2$points), 1e-6)
+plot(ftrue, type="l", asp=1, col="red", main="(ii)")
+lines(fit2(S),col="blue",lty="dashed")
+
+dev.off()
+
+```
+
+```{r}
+X <- moon1d3D(600, noise=0.02)
+#ftrue <- moon1d2D(1000, noise=0)
+S <- seq(0,1,0.001)
+
+# isomap 1-dim
+isoinit <- isomap(dist(X), ndim=1, k=10)
+fit <- spline1d_periodic(X, isoinit$points, 1e-6)
+#png("sim_results/iso_1d_2d.png",width=8, height = 4, units="in",res=600)
+#par(mfrow=c(1,2))
+#plot(ftrue, type="l", asp=1, col="red", main="(i)")
+#lines(fit(S),col="blue",lty="dashed")
+plot_datafit_1d3D(X, fit)
+
+# isomap 2-dim into project circle
+isoinit2 <- isomap(dist(X), ndim=2, k=10)
+fit2 <- spline1d_periodic(X, project_circle(isoinit2$points), 1e-6)
+#plot(ftrue, type="l", asp=1, col="red", main="(ii)")
+#lines(fit2(S),col="blue",lty="dashed")
+plot_datafit_1d3D(X, fit2)
+```
+
+
+Include as a figure?
+
+```{r}
+
+
+
+
+df %>% ggplot(aes(x=x,y=y, col=Method, linetype = Method)) + geom_path(linewidth=1) + facet_wrap(~Stage) + theme_bw() +  theme( panel.grid=element_blank()) + scale_color_manual(values=c("Naive"= "Red", "ISOMAP"="blue")) +
+  theme(legend.position="bottom",
+          legend.background=element_rect(fill="white",color="black"), panel.grid=element_blank(),aspect.ratio=1)
+ggsave("sim_results/isomap_unwind_first_vs_converged.png", width=10, height = 5, dpi=300)
+```
+

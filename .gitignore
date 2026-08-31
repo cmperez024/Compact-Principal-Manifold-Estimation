@@ -3,3 +3,12 @@
 .RData
 .Ruserdata
 .Rproj
+packages/
+*.Rcheck/
+CompactPME.Rcheck/
+
+# Local research history and generated workspace artifacts are intentionally
+# retained on disk but are not part of the GitHub repository.
+90_RESEARCH_ARCHIVE/
+99_WASTE_BIN/
+.codex_placeholder

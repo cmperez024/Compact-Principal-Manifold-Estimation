@@ -1,0 +1,219 @@
+---
+title: "(38) pme examples"
+author: "Christopher Perez"
+date: "2026-03-02"
+output: pdf_document
+---
+```{r}
+run <-F
+library(pracma) # bernoulli and coordinates
+library(vegan) # isomap
+library(plotly) # plotting
+library(foreach) # parallelization
+library(doParallel)
+library(cooltools) 
+library(splines)
+```
+
+
+# Section 3 figures
+
+```{r}
+  library(plot3D)
+  set.seed(1)
+  lambdas <- 10^c(-12,-5.5, -3,-2.2)
+  
+  X1 <- flower2d3D(300, petals=6, noise=0.01)$X
+  res <- pmeClosed_2d(X1,lambdas, parallel = F, optimize_lambda=F)
+  
+  
+  X2 <- unifmoon2d3D(300, noise=0.01, bend_radius=2, bend=1.2*pi)$X
+  res2 <- pmeClosed_2d(X2,lambdas, parallel = F, optimize_lambda=F, init_iso=T)
+
+  
+
+  
+  # theta=20, phi =50,xlim=c(-0.7,0.7),ylim=NULL, zlim=c(-0.5,0.5)
+# plotting CV by lambda
+
+  png(filename="testplot.png", width=12, height=8, units="in",res=600)
+  par(mar = c(1.5,2,1.5,2), mfrow=c(2,4), xpd=F)
+  for(i in 1:length(lambdas)){
+    plot_datafit_2d3D_static(X1, res$spline_list[[i]],theta=20, phi =50,bty="g",
+                             title=paste0("λ = ", formatC(lambdas[i],format="e",digits=2)))
+  }
+  for(i in 1:length(lambdas)){
+    plot_datafit_2d3D_static(X2, res2$spline_list[[i]],bty="g",theta=200, phi =40,
+                            title=paste0("λ = ", formatC(lambdas[i],format="e",digits=2)))
+  }
+  
+  
+```
+
+
+# Section 6 Figures
+```{r}
+library(wacolors)
+
+plot_datafit_1d3D_multi_static <- function(data, fitlist,theta=40,phi=20, periodic=F) {
+  library(plot3D)
+  
+  S <- seq(0, 1, length.out = 1000)
+  #cols <- rainbow(length(fitlist$spline_list))
+  cols <- wacolors$rainier
+  
+  # Base scatter plot (data points)
+  scatter3D(
+    x = data[, 1], y = data[, 2],z = data[, 3],
+    col = rgb(0, 0, 0, alpha=0.3), pch = 16, cex = 0.5,
+    xlab = "X",
+    ylab = "Y",
+    zlab = "Z",
+    theta = theta,
+    phi = phi,
+    ticktype = "detailed",
+    box=TRUE,shade=0.8, bty="g"
+  )
+  
+  # Add fitted spline curves
+  last <- length(fitlist$spline_list)
+  
+  for (i in seq_along(fitlist$spline_list)) {
+    fit <- fitlist$spline_list[[i]]
+    splinevis <- fit(S)
+    
+    lines3D(
+      x = splinevis[, 1],
+      y = splinevis[, 2],
+      z = splinevis[, 3],
+      col = cols[i],
+      lwd = ifelse((i ==last) & periodic, 7, 2),
+      add = TRUE
+    )
+  }
+  
+  # Legend
+  legend(
+    "topright",
+    legend = paste("λ =", fitlist$lambda_list),
+    col = cols,
+    lwd = 1,
+    bty = "n"
+  )
+}
+```
+
+
+ 
+
+
+
+```{r}
+  lambdas <- 10^c(-12,-6,0)
+  
+  X1 <- sine1d3D(500, rotation=pi/6, period=2*pi, noise=0.02)$X
+  result1 <- pmeClosed_1d_interval(X1, lambdas,parallel=T, k_init=5, optimize_lambda = F)
+  df1 <- list_to_df(result1,"interval")
+  
+  
+  X2 <- helix1d3D(500, rotation=pi/6, zscale=3,noise=0.02)$X
+  result2 <- pmeClosed_1d_interval(X2, lambdas,parallel=T, k_init=5, optimize_lambda = F)
+  df2 <- list_to_df(result2,"interval")
+
+  
+  
+```
+```{r}
+#png("sim_results/1d3D_sine_spiral.png", width = 4800, height=3000, res=400)
+par(mfrow=c(1,2),mar= c(4, 4, 1, 2))
+  plot_datafit_1d3D_multi_static(X1, result1,theta=10,phi=30)
+  plot_datafit_1d3D_multi_static(X2, result2, theta=10, phi=10)
+#dev.off()
+  
+```
+
+```{r}
+  lambdas <- 10^c(-12,-6,0)
+  
+  X1 <- flower1d3D(500, petals=5, noise=0.02)$X
+  result1 <- pmeClosed_1d_periodic(X1, lambdas,parallel=T, optimize_lambda = F)
+  df1 <- list_to_df(result1,"S1")
+
+  X2 <- moon1d3D(500, noise=0.02)
+  result2 <- pmeClosed_1d_periodic(X2, lambdas,parallel=T, optimize_lambda = F)
+  df2 <- list_to_df(result2,"S1")
+
+  
+
+```
+
+```{r}
+png("sim_results/1d3D_star_moon.png", width = 4800, height=3000, res=400)
+par(mfrow=c(1,2),mar= c(4, 4, 1, 2))
+  plot_datafit_1d3D_multi_static(X1, result1,theta=40,phi=70, periodic=T)
+  plot_datafit_1d3D_multi_static(X2, result2, theta=-70, phi=40, periodic=T)
+dev.off()
+```
+
+
+# CV issue: 1d, approx vs exact?
+
+```{r}
+X <- halfflower1d2D(500, petals=6, noise=0.03)$X
+
+lams <- 10^seq(-12,0, length.out=50)
+pme_approx <- pmeClosed_1d_interval(X,lams, parallel=T, approx=T, optimize_lambda=T, k_init=10)
+pme_exact <- pmeClosed_1d_interval(X,lams, parallel=T, approx=F, optimize_lambda=T,k_init=10)
+
+approx_min <- which.min(pme_approx$cv[,2])
+exact_min <- which.min(pme_exact$cv[,2])
+
+S <- seq(0,1,length.out=1000)
+par(mfrow=c(2,2))
+plot(pme_approx$cv, log="x", main="approx")
+plot(pme_approx$spline_list[[approx_min]](S), type="l", main="approx")
+
+plot(pme_exact$cv, log="x", main="exact")
+plot(pme_exact$spline_list[[exact_min]](S), type="l", main="exact")
+```
+
+```{r}
+X <- flower1d2D(500, petals=6, noise=0.03)$X
+
+lams <- 10^seq(-6,10, length.out=50)
+lams2 <- 10^seq(-12,1, length.out=50)
+pme_approx <- pmeClosed_1d_periodic(X,lams, parallel=T, approx=T, optimize_lambda=T)
+pme_exact <- pmeClosed_1d_periodic(X,lams2, parallel=T, approx=F, optimize_lambda=T)
+
+approx_min <- which.min(pme_approx$cv[,2])
+exact_min <- which.min(pme_exact$cv[,2])
+
+S <- seq(0,1,length.out=1000)
+par(mfrow=c(2,2))
+plot(pme_approx$cv, log="x", main="approx")
+plot(pme_approx$spline_list[[approx_min]](S), type="l", main="approx")
+
+plot(pme_exact$cv, log="x", main="exact")
+plot(pme_exact$spline_list[[exact_min]](S), type="l", main="exact")
+```
+
+
+```{r}
+X <- flower1d2D(500, petals=6, noise=0.03)$X
+
+#lams <- 10^seq(-16,4, length.out=50)
+lams <- 10^seq(-6,10, length.out=50)
+pme_approx <- pmeClosed_1d_periodic(X,lams, parallel=T, approx=T, optimize_lambda=T)
+
+
+approx_min <- which.min(pme_approx$cv[,2])
+
+
+S <- seq(0,1,length.out=1000)
+
+plot(pme_approx$cv, log="x", main="approx")
+
+plot(pme_approx$dataset);lines(pme_approx$spline_list[[approx_min]](S), col="red")
+```
+
+

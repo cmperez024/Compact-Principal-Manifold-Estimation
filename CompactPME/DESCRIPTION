@@ -3,8 +3,16 @@ Title: Compact Principal Manifold Estimation
 Version: 0.0.1
 Authors@R: 
     person("Christopher", "Perez", , "cmp23b@fsu.edu", role = c("aut", "cre"))
-Description: Sample description.
+Author: Christopher Perez [aut, cre]
+Maintainer: Christopher Perez <cmp23b@fsu.edu>
+Description: Estimates smooth principal curves and surfaces from noisy point
+    clouds using compact one- and two-dimensional Riemannian template
+    manifolds. Implementations are provided for interval, circle, and sphere
+    templates, including projection-adaptation fitting and smoothing-parameter
+    selection utilities.
 License: MIT + file LICENSE
+URL: https://github.com/cmperez024/Compact-Principal-Manifold-Estimation
+BugReports: https://github.com/cmperez024/Compact-Principal-Manifold-Estimation/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
