@@ -1,7 +1,17 @@
 # Compact Principal Manifold Estimation
 
 This repository contains the CompactPME R package and the reproducible figure
-workflows for its associated Euclidean principal-manifold manuscript.
+workflows associated with the paper described below.
+
+## Associated paper
+
+This repository is the software and simulation-reproduction companion to
+["Theoretical Foundations of Principal Manifold Estimation with Non-Euclidean
+Templates"](https://arxiv.org/abs/2604.04272) by Kun Meng and Christopher
+Perez (2026, arXiv preprint). The `CompactPME/` package contains the principal
+manifold estimation implementation, while `simulation_reproduction/` contains
+the code and saved inputs used to reproduce the paper's reported simulations
+and figures.
 
 ## Repository layout
 
