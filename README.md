@@ -18,6 +18,7 @@ and figures.
 - `CompactPME/`: installable R package.
 - `create-CompactPME.Rmd`: authoritative literate source used to create the
   package files.
+- `create-CompactPME.html`: rendered, readable version of the package source.
 - `simulation_reproduction/`: code, saved inputs, and only the figures used in
   the current manuscript, grouped in manuscript order.
 
@@ -54,7 +55,8 @@ fit <- pme_1d_interval(X, 10^(-10:-2), optimize_lambda = TRUE)
 `create-CompactPME.Rmd` is the package source of record and uses
 [`litr`](https://jacobbien.github.io/litr-project/) to generate files under
 `CompactPME/`. Changes to generated package code should also be reflected in
-the source Rmd.
+the source Rmd. The accompanying `create-CompactPME.html` provides a browsable
+rendering of that source.
 
 Most functions were developed by Christopher Perez. Kun Meng contributed the
 one-dimensional variance-heterogeneity functions `local_var_1d` and `var_het`.
