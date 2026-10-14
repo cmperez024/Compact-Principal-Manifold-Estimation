@@ -9,6 +9,8 @@ export(spline1d_interval_approx)
 export(spline1d_periodic)
 export(spline1d_periodic_approx)
 export(spline2d)
-importFrom(foreach,"%do%")
-importFrom(foreach,"%dopar%")
+importFrom(foreach,
+  "%do%",
+  "%dopar%"
+)
 importFrom(splines,splineDesign)

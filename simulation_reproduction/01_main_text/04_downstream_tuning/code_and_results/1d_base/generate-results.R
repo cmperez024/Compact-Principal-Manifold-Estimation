@@ -1,10 +1,16 @@
+# Resolve paths from this file, including when invoked outside the project.
+script_file <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+if (!length(script_file)) stop("Run this script with Rscript.")
+script_dir <- dirname(normalizePath(sub("^--file=", "", script_file[1L]),
+                                     winslash = "/", mustWork = TRUE))
+
 ## Fixed-design response-noise experiment for Lin et al. (2017): compare
 ## extrinsic kernel and extrinsic local-linear regression after PME.
 
 options(stringsAsFactors = FALSE)
 set.seed(20260806)
 
-find_repo_root <- function(start = getwd()) {
+find_repo_root <- function(start = script_dir) {
   here <- normalizePath(start, winslash = "/", mustWork = TRUE)
   repeat {
     if (dir.exists(file.path(here, "CompactPME", "R"))) return(here)
@@ -25,6 +31,7 @@ experiment_name <- Sys.getenv(
   unset = "1d_base"
 )
 notebook_dir <- file.path(manuscript_experiments, experiment_name)
+notebook_dir <- Sys.getenv("PME_RESULTS_ROOT", unset = notebook_dir)
 result_dir <- file.path(notebook_dir, "results")
 cache_dir <- file.path(notebook_dir, "cache")
 dir.create(result_dir, recursive = TRUE, showWarnings = FALSE)
@@ -32,13 +39,12 @@ dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
 
 local_library <- file.path(repo_root, "packages")
 if (dir.exists(local_library)) .libPaths(c(local_library, .libPaths()))
-if (!requireNamespace("pracma", quietly = TRUE)) stop("pracma is required.")
-source(file.path(repo_root, "CompactPME", "R", "krt.R"))
-source(file.path(repo_root, "CompactPME", "R", "spline1d_periodic.R"))
-source(file.path(repo_root, "CompactPME", "R", "project_circle.R"))
-bernoulli <- pracma::bernoulli
-ones <- pracma::ones
-eye <- pracma::eye
+if (!requireNamespace("CompactPME", quietly = TRUE)) {
+  stop("Install the CompactPME package before running this script.")
+}
+spline1d_periodic <- CompactPME::spline1d_periodic
+project_circle <- CompactPME:::project_circle
+project_grid <- CompactPME:::project_grid
 
 flower_map <- function(u, petals = 5L, amplitude = 0.30) {
   angle <- 2 * pi * u
@@ -48,8 +54,8 @@ flower_map <- function(u, petals = 5L, amplitude = 0.30) {
 
 phase_map <- function(t) (0.5 + 0.5 * sin(pi * t)) %% 1
 
-fit_pme_s1 <- function(X, lambda, projection_grid_size = 1200L,
-                       min_iterations = 3L, max_iterations = 100L,
+fit_pme_s1 <- function(X, lambda, projection_grid_size = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 100L else 1200L,
+                       min_iterations = 3L, max_iterations = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 3L else 100L,
                        relative_tolerance = 1e-4) {
   projection_index <- project_circle(X)
   fit <- spline1d_periodic(X, projection_index, lambda)
@@ -128,7 +134,7 @@ ambient_local_linear <- function(t_train, y_train, t_new, bandwidth,
 }
 
 extrinsic_predict <- function(method, t_train, y_train, t_new, bandwidth,
-                              manifold_fit, projection_grid_size = 1200L,
+                              manifold_fit, projection_grid_size = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 100L else 1200L,
                               leave_one_out = FALSE) {
   ambient <- switch(method,
     kernel = ambient_kernel(
@@ -166,7 +172,7 @@ select_bandwidth <- function(method, t_train, denoised_train,
 }
 
 ## Generate the covariates once. From here onward they are conditioned upon.
-n <- 600L
+n <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 40L else 600L
 noise_sd <- as.numeric(Sys.getenv("PME_RESPONSE_NOISE_SD", unset = "0.08"))
 if (!is.finite(noise_sd) || noise_sd <= 0) stop("Invalid response-noise SD.")
 t_fixed <- sort(runif(n, -1, 1))
@@ -178,9 +184,12 @@ response_observed <- conditional_mean + response_error
 ## Generate the validation partition once and hold it fixed as well.
 k_folds <- 5L
 fold_id <- sample(rep(seq_len(k_folds), length.out = n))
-lambda_grid <- 10^seq(-14, -4, by = 1)
+lambda_grid <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) c(1e-6, 1e-4) else 10^seq(-14, -4, by = 1)
 bandwidth_grid <- c(0.004, 0.006, 0.008, 0.01, 0.015, 0.022, 0.03, 0.045, 0.065, 0.09,
                     0.13, 0.18, 0.26, 0.38)
+if (identical(Sys.getenv("PME_SMOKE_TEST"), "1") && exists("bandwidth_grid")) {
+  bandwidth_grid <- c(0.2, 0.4, 0.8)
+}
 methods <- c("kernel", "local_linear")
 prediction_store <- array(
   NA_real_, dim = c(n, 2L, length(lambda_grid), length(methods)),

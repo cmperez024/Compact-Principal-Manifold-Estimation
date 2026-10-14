@@ -28,8 +28,8 @@
     #============== Precompute matrices
     m <- 2
     r <- 0:m
-    Tmat <- ones(n,1)
-    M <- Rmat2 + n * lambda * eye(n)
+    Tmat <- pracma::ones(n, 1)
+    M <- Rmat2 + n * lambda * pracma::eye(n)
     Minv <- solve(M)
     
     # constant part

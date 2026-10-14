@@ -12,3 +12,8 @@ CompactPME.Rcheck/
 90_RESEARCH_ARCHIVE/
 99_WASTE_BIN/
 .codex_placeholder
+
+# Local execution checks; reduced-size results are not publication artifacts.
+.independence_validation/
+simulation_reproduction/01_main_text/04_downstream_tuning/figure_5_2_inputs/**/cache/
+simulation_reproduction/01_main_text/04_downstream_tuning/figure_5_2_inputs/**/cache-*/

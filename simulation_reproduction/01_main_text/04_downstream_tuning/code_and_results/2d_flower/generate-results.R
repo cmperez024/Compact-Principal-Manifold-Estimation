@@ -1,3 +1,9 @@
+# Resolve paths from this file, including when invoked outside the project.
+script_file <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+if (!length(script_file)) stop("Run this script with Rscript.")
+script_dir <- dirname(normalizePath(sub("^--file=", "", script_file[1L]),
+                                     winslash = "/", mustWork = TRUE))
+
 ## Five-fold downstream selection of the two-dimensional CPME smoothing
 ## parameter, followed by multivariate extrinsic kernel and local-linear
 ## regression. The response manifold is a two-dimensional flower in R^3 with
@@ -20,7 +26,7 @@ if (!is.finite(sample_size) || sample_size < 10L || sample_size %% 5L != 0L) {
   stop("Sample size must be an integer of at least 10 and divisible by 5.")
 }
 
-find_repo_root <- function(start = getwd()) {
+find_repo_root <- function(start = script_dir) {
   here <- normalizePath(start, winslash = "/", mustWork = TRUE)
   repeat {
     if (dir.exists(file.path(here, "CompactPME", "R"))) return(here)
@@ -47,6 +53,8 @@ cache_suffix <- if (experiment_variant == "original") {
 } else {
   sprintf("-uniform-noninjective-n%d", sample_size)
 }
+notebook_dir <- Sys.getenv("PME_RESULTS_ROOT", unset = notebook_dir)
+if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) sample_size <- 30L
 result_dir <- file.path(notebook_dir, paste0("results", result_suffix))
 cache_dir <- file.path(notebook_dir, paste0("cache", cache_suffix))
 dir.create(result_dir, recursive = TRUE, showWarnings = FALSE)
@@ -54,18 +62,27 @@ dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
 
 local_library <- file.path(repo_root, "packages")
 if (dir.exists(local_library)) .libPaths(c(local_library, .libPaths()))
-if (!requireNamespace("pracma", quietly = TRUE)) stop("pracma is required.")
+if (!requireNamespace("CompactPME", quietly = TRUE)) {
+  stop("Install the CompactPME package before running this script.")
+}
 
-## Use the two-dimensional flower and spherical CPME implementation supplied
-## by this project.
-cart2sph <- pracma::cart2sph
-sph2cart <- pracma::sph2cart
-source(file.path(manuscript_section, "shared", "datasets.R"))
-source(file.path(repo_root, "CompactPME", "R", "qm.R"))
-source(file.path(repo_root, "CompactPME", "R", "spline2d.R"))
-source(file.path(repo_root, "CompactPME", "R", "project_optimize2.R"))
-ones <- pracma::ones
-eye <- pracma::eye
+## All project functionality comes from the installed CompactPME package.
+spline2d <- CompactPME::spline2d
+project_optimize2 <- CompactPME:::project_optimize2
+fibonaccisphere <- CompactPME:::fibonaccisphere
+
+flower2d3D_func <- function(t, r0 = 1, a = 0.3, petals = 6, b = 0.5) {
+  t <- as.matrix(t)
+  t <- t / sqrt(rowSums(t^2))
+  longitude <- atan2(t[, 2L], t[, 1L])
+  z <- pmax(-1, pmin(1, t[, 3L]))
+  radius_xy <- r0 * (1 + a * cos(petals * longitude))
+  cbind(
+    radius_xy * sqrt(1 - z^2) * cos(longitude),
+    radius_xy * sqrt(1 - z^2) * sin(longitude),
+    b * z
+  )
+}
 
 normalize_rows <- function(x) {
   x <- as.matrix(x)
@@ -100,7 +117,7 @@ phase_map_s2 <- function(z) {
 }
 
 fit_pme_s2 <- function(x, lambda, min_iterations = 3L,
-                       max_iterations = 15L,
+                       max_iterations = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 2L else 15L,
                        relative_tolerance = 1e-4) {
   centered <- scale(x, scale = FALSE)
   projection <- normalize_rows(centered)
@@ -144,7 +161,7 @@ fit_pme_s2 <- function(x, lambda, min_iterations = 3L,
   )
 }
 
-surface_grid <- fibonaccisphere(1800L)
+surface_grid <- fibonaccisphere(if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 100L else 1800L)
 
 make_surface_cache <- function(fit) {
   list(template = surface_grid, ambient = fit(surface_grid))
@@ -291,9 +308,12 @@ response_observed <- conditional_mean + response_error
 fold_id <- sample(rep(seq_len(k_folds), length.out = n))
 stopifnot(all(tabulate(fold_id, nbins = k_folds) == n / k_folds))
 
-lambda_grid <- c(10^seq(-12, -4, length.out = 8L), 1e-3, 1e-2)
+lambda_grid <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) c(1e-6, 1e-4) else c(10^seq(-12, -4, length.out = 8L), 1e-3, 1e-2)
 bandwidth_grid <- c(0.03, 0.04, 0.05, 0.06, 0.08, 0.12,
                     0.18, 0.26, 0.38, 0.55, 0.80)
+if (identical(Sys.getenv("PME_SMOKE_TEST"), "1") && exists("bandwidth_grid")) {
+  bandwidth_grid <- c(0.2, 0.4, 0.8)
+}
 methods <- c("kernel", "local_linear")
 method_labels <- c(
   kernel = "Extrinsic kernel",

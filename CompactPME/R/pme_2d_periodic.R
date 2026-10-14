@@ -47,7 +47,7 @@ pme_2d_periodic <- function(data, lambdas, min_iter=1, max_iter = 10, optimize_l
     
     # Parallel loop over lambdas
     results <- operator( foreach::foreach(i = 1:length(lambdas), 
-                                 .packages = c("stats", "pracma","Riemann"),
+                                 .packages = c("stats", "pracma"),
                                  .export = c("spline2d","project_optimize2",
                                              "spline_error","qm","expr","Rpp","m", "var_het", 
                                              "d_circ_vec","pelletier_kernel", "fibonaccisphere")), {

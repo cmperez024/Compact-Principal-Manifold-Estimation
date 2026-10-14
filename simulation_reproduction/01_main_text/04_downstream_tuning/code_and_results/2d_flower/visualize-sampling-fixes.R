@@ -1,3 +1,9 @@
+# Resolve paths from this file, including when invoked outside the project.
+script_file <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+if (!length(script_file)) stop("Run this script with Rscript.")
+script_dir <- dirname(normalizePath(sub("^--file=", "", script_file[1L]),
+                                     winslash = "/", mustWork = TRUE))
+
 ## Data-only comparison of sampling fixes for the two-dimensional flower.
 ## No PME or regression fit is computed.
 
@@ -5,10 +11,9 @@ options(stringsAsFactors = FALSE)
 set.seed(20260808)
 
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 1L) stop("Supply the output HTML-fragment path.")
-html_path <- normalizePath(args[1], winslash = "/", mustWork = FALSE)
+html_path <- if (length(args)) normalizePath(args[1], winslash = "/", mustWork = FALSE) else file.path(script_dir, "sampling-comparison.html")
 
-find_repo_root <- function(start = getwd()) {
+find_repo_root <- function(start = script_dir) {
   here <- normalizePath(start, winslash = "/", mustWork = TRUE)
   repeat {
     if (dir.exists(file.path(here, "CompactPME", "R"))) return(here)
@@ -25,6 +30,7 @@ manuscript_section <- file.path(repo_root, "simulation_reproduction",
 notebook_dir <- file.path(
   manuscript_section, "code_and_results", "2d_flower"
 )
+notebook_dir <- Sys.getenv("PME_RESULTS_ROOT", unset = notebook_dir)
 result_dir <- file.path(notebook_dir, "results")
 dir.create(result_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -32,8 +38,21 @@ local_library <- file.path(repo_root, "packages")
 if (dir.exists(local_library)) .libPaths(c(local_library, .libPaths()))
 cart2sph <- pracma::cart2sph
 sph2cart <- pracma::sph2cart
-source(file.path(manuscript_section, "shared", "datasets.R"))
-
+if (!requireNamespace("CompactPME", quietly = TRUE)) {
+  stop("Install the CompactPME package before running this script.")
+}
+spline2d <- CompactPME::spline2d
+project_optimize2 <- CompactPME:::project_optimize2
+fibonaccisphere <- CompactPME:::fibonaccisphere
+flower2d3D_func <- function(t, r0 = 1, a = 0.3, petals = 6, b = 0.5) {
+  t <- as.matrix(t)
+  t <- t / sqrt(rowSums(t^2))
+  longitude <- atan2(t[, 2L], t[, 1L])
+  z <- pmax(-1, pmin(1, t[, 3L]))
+  radius_xy <- r0 * (1 + a * cos(petals * longitude))
+  cbind(radius_xy * sqrt(1 - z^2) * cos(longitude),
+        radius_xy * sqrt(1 - z^2) * sin(longitude), b * z)
+}
 original_phase_map <- function(z) {
   q <- (0.5 + 0.45 * sin(
     pi * z[, 1] + 0.35 * sin(pi * z[, 2])

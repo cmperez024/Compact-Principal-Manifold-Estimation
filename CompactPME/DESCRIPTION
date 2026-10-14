@@ -5,17 +5,18 @@ Authors@R:
     person("Christopher", "Perez", , "cmp23b@fsu.edu", role = c("aut", "cre"))
 Author: Christopher Perez [aut, cre]
 Maintainer: Christopher Perez <cmp23b@fsu.edu>
-Description: Estimates smooth principal curves and surfaces from noisy point
-    clouds using compact one- and two-dimensional Riemannian template
-    manifolds. Implementations are provided for interval, circle, and sphere
-    templates, including projection-adaptation fitting and smoothing-parameter
-    selection utilities.
+Description: Estimates smooth principal curves and surfaces from noisy
+    point clouds using compact one- and two-dimensional Riemannian
+    template manifolds. Implementations are provided for interval, circle,
+    and sphere templates, including projection-adaptation fitting and
+    smoothing-parameter selection utilities.
 License: MIT + file LICENSE
 URL: https://github.com/cmperez024/Compact-Principal-Manifold-Estimation
-BugReports: https://github.com/cmperez024/Compact-Principal-Manifold-Estimation/issues
+BugReports: 
+    https://github.com/cmperez024/Compact-Principal-Manifold-Estimation/issues
+Config/roxygen2/version: 8.1.0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
 Imports: 
     doParallel,
     dplyr,
@@ -25,5 +26,5 @@ Imports:
     pracma,
     splines,
     vegan
-LitrVersionUsed: 0.9.3
-LitrId: 2392bf8f4aed799bce43434ac0594ee9
+LitrVersionUsed: 0.9.5
+LitrId: 003ab3ae400ee1d0eba05589b43e9301

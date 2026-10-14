@@ -16,7 +16,7 @@ spline1d_interval <- function(X,t,lambda){
   #Sigma <- combn(1:n, n, Vectorize(function(i, j) Rk(t[i],t[j])))[,,1]
   Sigma <- outer(t, t, function(s, t) Rk(s, t))
   
-  M <- Sigma + n*lambda*eye(n)
+  M <- Sigma + n * lambda * pracma::eye(n)
   
   # Theta factor (multiplies y) same for x and y coordinate. Calculate once.
   #Minv <- solve(M)

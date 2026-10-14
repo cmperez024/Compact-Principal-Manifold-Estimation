@@ -6,7 +6,7 @@
 #' @param t where we evaluate
 krt <- function(r, t) {
   tfrac <- t - floor(t)
-  bernoulli(r, tfrac) / factorial(r)
+  pracma::bernoulli(r, tfrac) / factorial(r)
 }
 
 #' The Reproducing kernel for S1

@@ -1,7 +1,6 @@
 # Reproduce the principal-manifold figures
 
-- `2d3D_star_moon.png`: run the **Section 3 figures** chunks in
-  `code/surface_and_curve_examples.Rmd`.
+- `2d3D_star_moon.png`: run `code/generate_2d3D_star_moon.R`.
 - `PME_monte_carlo_star2.png`: from the repository root, run:
 
 ```powershell

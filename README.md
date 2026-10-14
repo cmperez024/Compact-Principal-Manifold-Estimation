@@ -26,6 +26,14 @@ Start with `simulation_reproduction/MANIFEST.csv` to map manuscript figures to
 files, and with `simulation_reproduction/CODE_MANIFEST.csv` to locate their
 generating code. Each subsection also includes a `REPRODUCE.md` run guide.
 
+The updated independent R workflows in `simulation_reproduction/` are the
+official local reproduction versions. Its README lists the canonical entry
+points, and the manifests identify each figure's official workflow. Plotters
+include the generation code needed for their own missing inputs. Figure 5.2
+owns both studies' saved inputs, and the Poisson workflow retains the original
+manuscript view and shading through its own reference surface asset.
+Reduced validation outputs are kept outside this official tree.
+
 ## Installation
 
 ```r
@@ -47,6 +55,7 @@ Given an `N` by `D` data matrix `X`, fit one-dimensional interval-template
 estimates over a smoothing-parameter grid with:
 
 ```r
+library(CompactPME)
 fit <- pme_1d_interval(X, 10^(-10:-2), optimize_lambda = TRUE)
 ```
 
@@ -54,8 +63,9 @@ fit <- pme_1d_interval(X, 10^(-10:-2), optimize_lambda = TRUE)
 
 `create-CompactPME.Rmd` is the package source of record and uses
 [`litr`](https://jacobbien.github.io/litr-project/) to generate files under
-`CompactPME/`. Changes to generated package code should also be reflected in
-the source Rmd. The accompanying `create-CompactPME.html` provides a browsable
+`CompactPME/`. Edit the source Rmd and re-knit it to update the generated
+package; do not edit the generated package files by hand.
+The accompanying `create-CompactPME.html` provides a browsable
 rendering of that source.
 
 Most functions were developed by Christopher Perez. Kun Meng contributed the

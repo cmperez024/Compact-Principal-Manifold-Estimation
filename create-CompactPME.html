@@ -327,19 +327,36 @@ package</h1>
 <h1>Package setup</h1>
 <p>We start by specifying the information needed in the DESCRIPTION file
 of the R package.</p>
-<pre class="r"><code>usethis::create_package(
+<pre class="r"><code>if (.Platform$OS.type == "windows") {
+  invisible(Sys.setlocale("LC_CTYPE", "English_United States.utf8"))
+}
+
+usethis::create_package(
   path = ".",
   fields = list(
     Package = params$package_name,
     Version = "0.0.1",
     Title = "Compact Principal Manifold Estimation",
-    Description = "Sample description.",
+    Description = paste(
+      "Estimates smooth principal curves and surfaces from noisy point",
+      "clouds using compact one- and two-dimensional Riemannian template",
+      "manifolds. Implementations are provided for interval, circle, and",
+      "sphere templates, including projection-adaptation fitting and",
+      "smoothing-parameter selection utilities."
+    ),
     `Authors@R` = person(
       given = "Christopher",
       family = "Perez",
       email = "cmp23b@fsu.edu",
       role = c("aut", "cre")
-      )
+      ),
+    Author = "Christopher Perez [aut, cre]",
+    Maintainer = "Christopher Perez &lt;cmp23b@fsu.edu&gt;",
+    URL = "https://github.com/cmperez024/Compact-Principal-Manifold-Estimation",
+    BugReports = paste0(
+      "https://github.com/cmperez024/",
+      "Compact-Principal-Manifold-Estimation/issues"
+    )
   )
 )
 
@@ -585,7 +602,7 @@ approximate method utilizing external packages.</p>
   #Sigma &lt;- combn(1:n, n, Vectorize(function(i, j) <a href="create-CompactPME.html#Rk">Rk</a>(t[i],t[j])))[,,1]
   Sigma &lt;- outer(t, t, function(s, t) <a href="create-CompactPME.html#Rk">Rk</a>(s, t))
   
-  M &lt;- Sigma + n*lambda*eye(n)
+  M &lt;- Sigma + n * lambda * pracma::eye(n)
   
   # Theta factor (multiplies y) same for x and y coordinate. Calculate once.
   #Minv &lt;- solve(M)
@@ -856,7 +873,7 @@ approximate method utilizing external packages.</p>
 #' @param t where we evaluate
 <span id="krt">krt</span> &lt;- function(r, t) {
   tfrac &lt;- t - floor(t)
-  bernoulli(r, tfrac) / factorial(r)
+  pracma::bernoulli(r, tfrac) / factorial(r)
 }
 
 #' The Reproducing kernel for S1
@@ -886,10 +903,10 @@ approximate method utilizing external packages.</p>
   # define matrices. m = 2 corresponds to 2nd deriv penaltty
   m &lt;- 2
   r &lt;- 0:m
-  Tmat &lt;- ones(n,1)
+  Tmat &lt;- pracma::ones(n, 1)
   #K &lt;-  ((-1)^(m - 1)) *combn(1:n, n, Vectorize(function(j, k) <a href="create-CompactPME.html#krst">krst</a>(2 * m, t[j], t[k])))[,,1]
   K &lt;- (-1)^(m-1) * outer(t, t, function(s, t) <a href="create-CompactPME.html#krst">krst</a>(2*m, s, t))
-  M &lt;- K + n * lambda * eye(n)
+  M &lt;- K + n * lambda * pracma::eye(n)
   
   # Theta factor (multiplies y) same for x and y coordinate. Calculate once.
   #Minv &lt;- solve(M)
@@ -1304,8 +1321,8 @@ fibonaccisphere = function(n=1000, r=1) {
     #============== Precompute matrices
     m &lt;- 2
     r &lt;- 0:m
-    Tmat &lt;- ones(n,1)
-    M &lt;- Rmat2 + n * lambda * eye(n)
+    Tmat &lt;- pracma::ones(n, 1)
+    M &lt;- Rmat2 + n * lambda * pracma::eye(n)
     Minv &lt;- solve(M)
     
     # constant part
@@ -1396,7 +1413,7 @@ fibonaccisphere = function(n=1000, r=1) {
     
     # Parallel loop over lambdas
     results &lt;- operator( foreach::foreach(i = 1:length(lambdas), 
-                                 .packages = c("stats", "pracma","Riemann"),
+                                 .packages = c("stats", "pracma"),
                                  .export = c("spline2d","project_optimize2",
                                              "spline_error","qm","expr","Rpp","m", "var_het", 
                                              "d_circ_vec","pelletier_kernel", "fibonaccisphere")), {

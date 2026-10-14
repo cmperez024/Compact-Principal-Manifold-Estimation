@@ -15,10 +15,10 @@ spline1d_periodic <- function(X,t, lambda) {
   # define matrices. m = 2 corresponds to 2nd deriv penaltty
   m <- 2
   r <- 0:m
-  Tmat <- ones(n,1)
+  Tmat <- pracma::ones(n, 1)
   #K <-  ((-1)^(m - 1)) *combn(1:n, n, Vectorize(function(j, k) krst(2 * m, t[j], t[k])))[,,1]
   K <- (-1)^(m-1) * outer(t, t, function(s, t) krst(2*m, s, t))
-  M <- K + n * lambda * eye(n)
+  M <- K + n * lambda * pracma::eye(n)
   
   # Theta factor (multiplies y) same for x and y coordinate. Calculate once.
   #Minv <- solve(M)
