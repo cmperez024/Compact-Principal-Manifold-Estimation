@@ -1,3 +1,45 @@
+# Migrate legacy cached RMSE summaries to the draft's mean fold-MSE criterion.
+# Squaring the mean RMSE is not the same as averaging the squared fold RMSEs.
+upgrade_cv_mse <- function(object) {
+  if (is.null(object$tuning)) return(object)
+  tuning <- object$tuning
+  fold_name <- if (!is.null(tuning$fold_scores)) "fold_scores" else "fold_performance"
+  summary_name <- if (!is.null(tuning$aggregate_scores)) "aggregate_scores" else "lambda_performance"
+  folds <- tuning[[fold_name]]
+  scores <- tuning[[summary_name]]
+  if (is.null(folds) || is.null(scores)) return(object)
+  for (i in seq_len(nrow(scores))) {
+    ids <- folds$method == scores$method[i] & folds$lambda == scores$lambda[i]
+    raw <- folds$validation_rmse_raw[ids]^2
+    oracle <- folds$validation_rmse_oracle[ids]^2
+    if (!length(raw)) stop("Missing fold errors for a cached CV summary.")
+    scores$mean_raw_mse[i] <- mean(raw)
+    scores$se_raw_mse[i] <- stats::sd(raw)/sqrt(length(raw))
+    scores$mean_oracle_mse[i] <- mean(oracle)
+    scores$se_oracle_mse[i] <- stats::sd(oracle)/sqrt(length(oracle))
+  }
+  scores$selected <- FALSE
+  for (method in unique(scores$method)) {
+    ids <- which(scores$method == method)
+    best <- ids[which.min(scores$mean_raw_mse[ids])]
+    choice <- scores[best, , drop = FALSE]
+    previous <- object$final[[method]]$choice$lambda
+    if (!is.null(previous) && !isTRUE(all.equal(previous, choice$lambda, tolerance = 0))) {
+      stop("MSE selects a different lambda from this legacy cached final fit. ",
+           "Regenerate the experiment in a new PME_RESULTS_ROOT directory.")
+    }
+    scores$selected[best] <- TRUE
+    tuning$selected[[method]] <- scores[best, , drop = FALSE]
+    if (!is.null(object$final[[method]])) {
+      object$final[[method]]$choice <- scores[best, , drop = FALSE]
+    }
+  }
+  tuning[[summary_name]] <- scores
+  tuning$selection_loss <- "mean_fold_mse"
+  object$tuning <- tuning
+  object
+}
+
 # Resolve paths from this file, including when invoked outside the project.
 script_file <- grep("^--file=", commandArgs(FALSE), value = TRUE)
 if (!length(script_file)) stop("Run this script with Rscript.")
@@ -415,6 +457,10 @@ aggregate_one <- function(data) {
   raw <- data$validation_rmse_raw
   oracle <- data$validation_rmse_oracle
   data.frame(
+    mean_raw_mse = mean(raw^2),
+    se_raw_mse = sd(raw^2) / sqrt(length(raw)),
+    mean_oracle_mse = mean(oracle^2),
+    se_oracle_mse = sd(oracle^2) / sqrt(length(oracle)),
     mean_raw_rmse = mean(raw),
     se_raw_rmse = sd(raw) / sqrt(length(raw)),
     mean_oracle_rmse = mean(oracle),
@@ -442,7 +488,7 @@ lambda_performance$selected <- FALSE
 selected <- setNames(vector("list", length(methods)), methods)
 for (method in methods) {
   candidates <- which(lambda_performance$method == method)
-  best <- candidates[which.min(lambda_performance$mean_raw_rmse[candidates])]
+  best <- candidates[which.min(lambda_performance$mean_raw_mse[candidates])]
   lambda_performance$selected[best] <- TRUE
   selected[[method]] <- lambda_performance[best, , drop = FALSE]
 }
@@ -536,26 +582,26 @@ par(mfrow = c(1, 2), mar = c(4.5, 4.7, 3.4, 1.0),
 for (method in methods) {
   values <- lambda_performance[lambda_performance$method == method, ]
   y_range <- range(
-    values$mean_raw_rmse + c(-1, 1) * values$se_raw_rmse,
-    values$mean_oracle_rmse + c(-1, 1) * values$se_oracle_rmse
+    values$mean_raw_mse + c(-1, 1) * values$se_raw_mse,
+    values$mean_oracle_mse + c(-1, 1) * values$se_oracle_mse
   )
   plot(
-    values$lambda, values$mean_raw_rmse,
+    values$lambda, values$mean_raw_mse,
     log = "x", type = "b", pch = 16, lwd = 2.2,
     col = "#D55E00", ylim = y_range,
-    xlab = expression(lambda), ylab = "Five-fold RMSE",
+    xlab = expression(lambda), ylab = "Five-fold MSE",
     main = method_labels[method]
   )
   arrows(
-    values$lambda, values$mean_raw_rmse - values$se_raw_rmse,
-    values$lambda, values$mean_raw_rmse + values$se_raw_rmse,
+    values$lambda, values$mean_raw_mse - values$se_raw_mse,
+    values$lambda, values$mean_raw_mse + values$se_raw_mse,
     angle = 90, code = 3, length = 0.035, col = "#D55E00"
   )
-  lines(values$lambda, values$mean_oracle_rmse,
+  lines(values$lambda, values$mean_oracle_mse,
         type = "b", pch = 1, lwd = 2.2, col = "#0072B2")
   arrows(
-    values$lambda, values$mean_oracle_rmse - values$se_oracle_rmse,
-    values$lambda, values$mean_oracle_rmse + values$se_oracle_rmse,
+    values$lambda, values$mean_oracle_mse - values$se_oracle_mse,
+    values$lambda, values$mean_oracle_mse + values$se_oracle_mse,
     angle = 90, code = 3, length = 0.035, col = "#0072B2"
   )
   best <- values[values$selected, ]
@@ -711,6 +757,7 @@ if (!all(file.exists(file.path(cache_dir, sprintf(
 objects <- readRDS(file.path(
   result_dir, "extrinsic-regression-2d-flower-objects.rds"
 ))
+objects <- upgrade_cv_mse(objects)
 z_external <- objects$data$z_external
 response_observed <- objects$data$response_observed
 conditional_mean <- objects$data$conditional_mean
@@ -840,6 +887,9 @@ aggregate_sensitivity <- do.call(rbind, lapply(groups, function(group) {
     method = group$method[1],
     lambda = group$lambda[1],
     bandwidth = group$bandwidth[1],
+    mean_raw_mse = mean(group$raw_rmse^2),
+    se_raw_mse = sd(group$raw_rmse^2) / sqrt(nrow(group)),
+    mean_oracle_mse = mean(group$oracle_rmse^2),
     mean_raw_rmse = mean(group$raw_rmse),
     se_raw_rmse = sd(group$raw_rmse) / sqrt(nrow(group)),
     mean_oracle_rmse = mean(group$oracle_rmse)
@@ -863,7 +913,7 @@ bandwidth_groups <- split(
   )
 )
 selected_by_bandwidth <- do.call(rbind, lapply(bandwidth_groups, function(x) {
-  x[which.min(x$mean_raw_rmse), , drop = FALSE]
+  x[which.min(x$mean_raw_mse), , drop = FALSE]
 }))
 rownames(selected_by_bandwidth) <- NULL
 selected_by_bandwidth <- selected_by_bandwidth[

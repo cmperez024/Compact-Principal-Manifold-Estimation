@@ -1,3 +1,45 @@
+# Migrate legacy cached RMSE summaries to the draft's mean fold-MSE criterion.
+# Squaring the mean RMSE is not the same as averaging the squared fold RMSEs.
+upgrade_cv_mse <- function(object) {
+  if (is.null(object$tuning)) return(object)
+  tuning <- object$tuning
+  fold_name <- if (!is.null(tuning$fold_scores)) "fold_scores" else "fold_performance"
+  summary_name <- if (!is.null(tuning$aggregate_scores)) "aggregate_scores" else "lambda_performance"
+  folds <- tuning[[fold_name]]
+  scores <- tuning[[summary_name]]
+  if (is.null(folds) || is.null(scores)) return(object)
+  for (i in seq_len(nrow(scores))) {
+    ids <- folds$method == scores$method[i] & folds$lambda == scores$lambda[i]
+    raw <- folds$validation_rmse_raw[ids]^2
+    oracle <- folds$validation_rmse_oracle[ids]^2
+    if (!length(raw)) stop("Missing fold errors for a cached CV summary.")
+    scores$mean_raw_mse[i] <- mean(raw)
+    scores$se_raw_mse[i] <- stats::sd(raw)/sqrt(length(raw))
+    scores$mean_oracle_mse[i] <- mean(oracle)
+    scores$se_oracle_mse[i] <- stats::sd(oracle)/sqrt(length(oracle))
+  }
+  scores$selected <- FALSE
+  for (method in unique(scores$method)) {
+    ids <- which(scores$method == method)
+    best <- ids[which.min(scores$mean_raw_mse[ids])]
+    choice <- scores[best, , drop = FALSE]
+    previous <- object$final[[method]]$choice$lambda
+    if (!is.null(previous) && !isTRUE(all.equal(previous, choice$lambda, tolerance = 0))) {
+      stop("MSE selects a different lambda from this legacy cached final fit. ",
+           "Regenerate the experiment in a new PME_RESULTS_ROOT directory.")
+    }
+    scores$selected[best] <- TRUE
+    tuning$selected[[method]] <- scores[best, , drop = FALSE]
+    if (!is.null(object$final[[method]])) {
+      object$final[[method]]$choice <- scores[best, , drop = FALSE]
+    }
+  }
+  tuning[[summary_name]] <- scores
+  tuning$selection_loss <- "mean_fold_mse"
+  object$tuning <- tuning
+  object
+}
+
 # Resolve paths from this file, including when invoked outside the project.
 script_file <- grep("^--file=", commandArgs(FALSE), value = TRUE)
 if (!length(script_file)) stop("Run this script with Rscript.")
@@ -268,6 +310,10 @@ aggregate_one <- function(data) {
   raw <- data$validation_rmse_raw
   oracle <- data$validation_rmse_oracle
   data.frame(
+    mean_raw_mse = mean(raw^2),
+    se_raw_mse = sd(raw^2) / sqrt(length(raw)),
+    mean_oracle_mse = mean(oracle^2),
+    se_oracle_mse = sd(oracle^2) / sqrt(length(oracle)),
     mean_raw_rmse = mean(raw),
     se_raw_rmse = sd(raw) / sqrt(length(raw)),
     mean_oracle_rmse = mean(oracle),
@@ -294,7 +340,7 @@ selected <- vector("list", length(methods))
 names(selected) <- methods
 for (method in methods) {
   eligible <- which(aggregate_scores$method == method)
-  best <- eligible[which.min(aggregate_scores$mean_raw_rmse[eligible])]
+  best <- eligible[which.min(aggregate_scores$mean_raw_mse[eligible])]
   aggregate_scores$selected[best] <- TRUE
   selected[[method]] <- aggregate_scores[best, ]
 }
@@ -399,6 +445,7 @@ Rk <- CompactPME:::Rk
 objects <- readRDS(file.path(
   result_dir, "fixed-design-extrinsic-regression-objects.rds"
 ))
+objects <- upgrade_cv_mse(objects)
 response_observed <- objects$data$response_observed
 true_flower <- objects$display$true_mean_grid
 final <- objects$final

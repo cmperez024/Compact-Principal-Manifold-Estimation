@@ -1,6 +1,10 @@
 # Reproduce the four-by-five density-and-curve figure for the
 # quantile-calibrated numerical-nonidentifiability example in Section 5.1.
 # The implementation uses only base R.
+# Match the latest draft's Unicode mathematical panel headings.
+if (.Platform$OS.type == "windows") {
+  invisible(Sys.setlocale("LC_CTYPE", "English_United States.utf8"))
+}
 
 script_directory <- function() {
   file_argument <- grep("^--file=", commandArgs(FALSE), value = TRUE)
@@ -270,27 +274,17 @@ draw_axes <- function() {
 
 density_title <- function(q = NULL) {
   if (is.null(q)) {
-    if (isTRUE(l10n_info()[["UTF-8"]])) {
-      expression(p[bolditalic(X)["\u22c6"]](bolditalic(x)))
-    } else {
-      expression(p[bolditalic(X)["*"]](bolditalic(x)))
-    }
+    expression(p[bolditalic(X)["\u22c6"]](bolditalic(x)))
   } else {
     bquote(plain("PDF of")~bolditalic(X)[.(q)])
   }
 }
 
 manifold_title <- function(q = NULL) {
-  if (isTRUE(l10n_info()[["UTF-8"]])) {
-    if (is.null(q)) {
-      expression("\u2133"["\u22c6"])
-    } else {
-      bquote("\u2133"[.(q)])
-    }
-  } else if (is.null(q)) {
-    expression(italic(M)["*"])
+  if (is.null(q)) {
+    expression("\u2133"["\u22c6"])
   } else {
-    bquote(italic(M)[.(q)])
+    bquote("\u2133"[.(q)])
   }
 }
 

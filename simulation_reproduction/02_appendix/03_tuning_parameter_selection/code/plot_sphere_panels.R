@@ -265,7 +265,7 @@ job_label <- ""
 
 # 1. Load dataset
 set.seed(1)
-N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 30L else 250L
+N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 30L else 2500L
 dataset <- flower2d3D_unif(N, petals=5, noise=0.02)
 #plot_data_3D(dataset$X)
 
@@ -279,14 +279,16 @@ tdapath <- paste0("results_sph/flower_tda", job_label, ".rds")
 saveRDS(tda_sphere, tdapath)
 
 # 3. Run PME
-lambda_N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 3L else 10L
+lambda_N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 3L else 100L
 lambdas <- 10^(seq(-14,-3,length.out=lambda_N))
-pme_sphere <- pme_2d_periodic(dataset$X, lambdas, optimize_lambda = T,parallel = !identical(Sys.getenv("PME_SMOKE_TEST"), "1"), resid_smooth_size = 5*N)
+pme_sphere <- pme_2d_periodic(dataset$X, lambdas, optimize_lambda = T,parallel = !identical(Sys.getenv("PME_SMOKE_TEST"), "1"), max_iter = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 2L else 50L,
+  err_tol = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 0.01 else 1e-8,
+  resid_smooth_size = 5*N)
 pmepath <- paste0("results_sph/flower_pme", job_label, ".rds")
 saveRDS(pme_sphere, pmepath)
 
 
-N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 30L else 250L
+N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 30L else 2500L
 dataset <- unifmoon2d3D(N,noise=0.02)
 #plot_data_3D(dataset$X)
 
@@ -299,9 +301,11 @@ tdapath <- paste0("results_sph/cashew_tda", job_label, ".rds")
 saveRDS(tda_sphere, tdapath)
 
 # 3. Run PME
-lambda_N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 3L else 10L
+lambda_N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 3L else 100L
 lambdas <- 10^(seq(-14,-3,length.out=lambda_N))
-pme_sphere <- pme_2d_periodic(dataset$X, lambdas, optimize_lambda = T,parallel = !identical(Sys.getenv("PME_SMOKE_TEST"), "1"),resid_smooth_size = 5*N)
+pme_sphere <- pme_2d_periodic(dataset$X, lambdas, optimize_lambda = T,parallel = !identical(Sys.getenv("PME_SMOKE_TEST"), "1"),max_iter = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 2L else 50L,
+  err_tol = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 0.01 else 1e-8,
+  resid_smooth_size = 5*N)
 pmepath <- paste0("results_sph/cashew_pme", job_label, ".rds")
 saveRDS(pme_sphere, pmepath)
 
@@ -600,7 +604,7 @@ cv_plots2d <- function(result, f_true, cutoff= 5e-4){
     # Results for pelletier only
 
     meanplt <- result$mean %>% reshapedf() %>% filter(kernel_method=="pelletier") %>% ggplot(aes(x=lambda, y=value)) + geom_point()+ geom_line()+ scale_x_log10() + theme_bw()+
-      theme(panel.grid=element_blank()) + ylab("Mean Squared Residual") + xlab("λ")+ ggtitle("(ii)") + geom_vline(xintercept=cutoff, linetype="dashed")
+      theme(panel.grid=element_blank()) + ylab("Volume-averaged conditional squared residual") + xlab("λ")+ ggtitle("(ii)") + geom_vline(xintercept=cutoff, linetype="dashed")
 
 
     sdplt <- result$sd %>% reshapedf() %>% filter(kernel_method=="pelletier") %>% ggplot(aes(x=lambda, y=value)) + geom_point()+ geom_line()+ scale_x_log10() + theme_bw()+
@@ -609,12 +613,12 @@ cv_plots2d <- function(result, f_true, cutoff= 5e-4){
     # Min_df
     mindf <- result$cv %>% reshapedf() %>% filter(kernel_method=="pelletier") %>% group_by(kernel_method) %>% slice_min(value, with_ties=F)
     # thresholded min
-    mindf2 <- result$cv %>% reshapedf() %>% filter(lambda <= cutoff, kernel_method=="pelletier") %>% group_by(kernel_method) %>% slice_min(value, with_ties=F)
+    mindf2 <- result$cv %>% reshapedf() %>% filter(lambda < cutoff, kernel_method=="pelletier") %>% group_by(kernel_method) %>% slice_min(value, with_ties=F)
 
     mindfs <- rbind(cbind(mindf, optimal="naive"), cbind(mindf2, optimal="thresholded"))
 
 
-    cvplt <-result$cv %>% reshapedf() %>%  filter(kernel_method=="pelletier", lambda <= cutoff) %>%
+    cvplt <-result$cv %>% reshapedf() %>%  filter(kernel_method=="pelletier") %>%
       ggplot(aes(x=lambda, y=value)) + geom_point()+ geom_line()+ scale_x_log10() +
       theme_bw()+ geom_vline(xintercept = mindf2$lambda, col="red",linetype="dashed")+
       theme(panel.grid=element_blank(), legend.position="none")+
@@ -673,7 +677,7 @@ ggsave("panel_flower/panel_A_3.png", width=3200, height=3200, units = "px",dpi=6
 # Min_df
 mindf <- pme_sphere$cv %>% reshapedf() %>% filter(kernel_method=="pelletier") %>% group_by(kernel_method) %>% slice_min(value, with_ties=F)
 # thresholded min
-mindf2 <- pme_sphere$cv %>% reshapedf() %>% filter(lambda <= cutoff, kernel_method=="pelletier") %>% group_by(kernel_method) %>% slice_min(value, with_ties=F)
+mindf2 <- pme_sphere$cv %>% reshapedf() %>% filter(lambda < cutoff, kernel_method=="pelletier") %>% group_by(kernel_method) %>% slice_min(value, with_ties=F)
 
 mindfs <- rbind(cbind(mindf, type="naive"), cbind(mindf2, type="cutoff"))
 
@@ -767,7 +771,7 @@ ggsave("panel_cashew/panel_A_3.png", width=3200, height=3200, units = "px",dpi=6
 # Min_df
 mindf <- pme_sphere$cv %>% reshapedf() %>% filter(kernel_method=="pelletier") %>% group_by(kernel_method) %>% slice_min(value, with_ties=F)
 # thresholded min
-mindf2 <- pme_sphere$cv %>% reshapedf() %>% filter(lambda <= cutoff, kernel_method=="pelletier") %>% group_by(kernel_method) %>% slice_min(value, with_ties=F)
+mindf2 <- pme_sphere$cv %>% reshapedf() %>% filter(lambda < cutoff, kernel_method=="pelletier") %>% group_by(kernel_method) %>% slice_min(value, with_ties=F)
 
 mindfs <- rbind(cbind(mindf, type="naive"), cbind(mindf2, type="cutoff"))
 

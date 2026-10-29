@@ -1,6 +1,6 @@
 # Reproduce Figure 5.1
 
-Status: **complete**.
+Status: **aligned to the October 29, 2026 draft**.
 
 The Euclidean manuscript's numerical-nonidentifiability construction is
 described in Section 5.1 and Appendix F. From the project root, run:
@@ -14,3 +14,8 @@ The implementation uses only base R. It writes
 a 6000 by 4800 pixel, 400-dpi four-by-five panel containing the nine observed
 density alternatives, their nine latent-support manifolds, and the two target
 distribution/manifold panels.
+
+The official PNG is taken directly from the latest supplied draft. The R
+script incorporates its Unicode panel headings while retaining standalone
+output-path resolution: the script in the draft ZIP references an undefined
+`output_file` variable. The density construction and quadrature are unchanged.

@@ -261,6 +261,10 @@ aggregate_one <- function(data) {
   raw <- data$validation_rmse_raw
   oracle <- data$validation_rmse_oracle
   data.frame(
+    mean_raw_mse = mean(raw^2),
+    se_raw_mse = sd(raw^2) / sqrt(length(raw)),
+    mean_oracle_mse = mean(oracle^2),
+    se_oracle_mse = sd(oracle^2) / sqrt(length(oracle)),
     mean_raw_rmse = mean(raw),
     se_raw_rmse = sd(raw) / sqrt(length(raw)),
     mean_oracle_rmse = mean(oracle),
@@ -287,7 +291,7 @@ selected <- vector("list", length(methods))
 names(selected) <- methods
 for (method in methods) {
   eligible <- which(aggregate_scores$method == method)
-  best <- eligible[which.min(aggregate_scores$mean_raw_rmse[eligible])]
+  best <- eligible[which.min(aggregate_scores$mean_raw_mse[eligible])]
   aggregate_scores$selected[best] <- TRUE
   selected[[method]] <- aggregate_scores[best, ]
 }

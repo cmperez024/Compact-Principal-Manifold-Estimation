@@ -6,9 +6,9 @@ workflows associated with the paper described below.
 ## Associated paper
 
 This repository is the software and simulation-reproduction companion to
-["Theoretical Foundations of Principal Manifold Estimation with Non-Euclidean
-Templates"](https://arxiv.org/abs/2604.04272) by Kun Meng and Christopher
-Perez (2026, arXiv preprint). The `CompactPME/` package contains the principal
+"Principal Manifold Estimation with Riemannian Templates" by Kun Meng and
+Christopher Perez (latest supplied draft, October 29, 2026;
+[preprint link](https://arxiv.org/abs/2604.04272)). The `CompactPME/` package contains the principal
 manifold estimation implementation, while `simulation_reproduction/` contains
 the code and saved inputs used to reproduce the paper's reported simulations
 and figures.
@@ -33,6 +33,8 @@ include the generation code needed for their own missing inputs. Figure 5.2
 owns both studies' saved inputs, and the Poisson workflow retains the original
 manuscript view and shading through its own reference surface asset.
 Reduced validation outputs are kept outside this official tree.
+The latest draft comparison, verified settings, and manuscript corrections
+are recorded in `simulation_reproduction/DRAFT_ALIGNMENT_2026-10-29.md`.
 
 ## Installation
 

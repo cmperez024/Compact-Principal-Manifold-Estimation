@@ -257,7 +257,7 @@ job_label <- ""
 
 # 1. Load dataset
 set.seed(1)
-N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 30L else 250L
+N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 30L else 2500L
 dataset <- flower2d3D_unif(N, petals=5, noise=0.02)
 #plot_data_3D(dataset$X)
 
@@ -271,14 +271,16 @@ tdapath <- paste0("results_sph/flower_tda", job_label, ".rds")
 saveRDS(tda_sphere, tdapath)
 
 # 3. Run PME
-lambda_N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 3L else 10L
+lambda_N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 3L else 100L
 lambdas <- 10^(seq(-14,-3,length.out=lambda_N))
-pme_sphere <- pme_2d_periodic(dataset$X, lambdas, optimize_lambda = T,parallel = !identical(Sys.getenv("PME_SMOKE_TEST"), "1"), resid_smooth_size = 5*N)
+pme_sphere <- pme_2d_periodic(dataset$X, lambdas, optimize_lambda = T,parallel = !identical(Sys.getenv("PME_SMOKE_TEST"), "1"), max_iter = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 2L else 50L,
+  err_tol = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 0.01 else 1e-8,
+  resid_smooth_size = 5*N)
 pmepath <- paste0("results_sph/flower_pme", job_label, ".rds")
 saveRDS(pme_sphere, pmepath)
 
 
-N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 30L else 250L
+N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 30L else 2500L
 dataset <- unifmoon2d3D(N,noise=0.02)
 #plot_data_3D(dataset$X)
 
@@ -291,9 +293,11 @@ tdapath <- paste0("results_sph/cashew_tda", job_label, ".rds")
 saveRDS(tda_sphere, tdapath)
 
 # 3. Run PME
-lambda_N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 3L else 10L
+lambda_N <- if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 3L else 100L
 lambdas <- 10^(seq(-14,-3,length.out=lambda_N))
-pme_sphere <- pme_2d_periodic(dataset$X, lambdas, optimize_lambda = T,parallel = !identical(Sys.getenv("PME_SMOKE_TEST"), "1"),resid_smooth_size = 5*N)
+pme_sphere <- pme_2d_periodic(dataset$X, lambdas, optimize_lambda = T,parallel = !identical(Sys.getenv("PME_SMOKE_TEST"), "1"),max_iter = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 2L else 50L,
+  err_tol = if (identical(Sys.getenv("PME_SMOKE_TEST"), "1")) 0.01 else 1e-8,
+  resid_smooth_size = 5*N)
 pmepath <- paste0("results_sph/cashew_pme", job_label, ".rds")
 saveRDS(pme_sphere, pmepath)
 

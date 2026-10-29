@@ -549,7 +549,7 @@ cv_plots <- function(result, f_true, cutoff=1e3, lower=1e-16, upper=1e6){
 
 
   meanplt <- result$vh_mean %>% as.data.frame() %>% filter(lambda>= lower & lambda <= upper) %>% ggplot(aes(x=lambda, y=vh_mean)) + geom_point()+ scale_x_log10() + theme_bw()+
-    theme(panel.grid=element_blank()) + ylab("Mean Squared Residual") + xlab("λ")+ ggtitle("(ii)") +
+    theme(panel.grid=element_blank()) + ylab("Volume-averaged conditional squared residual") + xlab("λ")+ ggtitle("(ii)") +
     geom_vline(xintercept=cutoff, col="black",linetype ="dashed") + theme(aspect.ratio=1)
 
   sdplt <- result$vh_sd %>% as.data.frame() %>%  filter(lambda>= lower & lambda <= upper) %>% ggplot(aes(x=lambda, y=vh_sd)) + geom_point()+ scale_x_log10() + theme_bw()+
@@ -562,9 +562,9 @@ cv_plots <- function(result, f_true, cutoff=1e3, lower=1e-16, upper=1e6){
   df <- data.frame(t=S, x=f_true[,1],y=f_true[,2], repetition = 0)
 
   lams <- result$cv[,1]
-  lams_sub <- lams[lams <= cutoff]
+  lams_sub <- lams[lams < cutoff]
   cv_vals <- result$cv[,2]
-  cv_sub <- cv_vals[lams <= cutoff]
+  cv_sub <- cv_vals[lams < cutoff]
   #localmins <- find_peaks(-cv_vals)
   lam_optim <- lams[which.min(cv_vals)]
   lam_optim_sub <- lams_sub[which.min(cv_sub)]
@@ -574,7 +574,7 @@ cv_plots <- function(result, f_true, cutoff=1e3, lower=1e-16, upper=1e6){
 
   #localmins_cut <- localmins[localmins %in% which(lams< 1e-4 & lams> 1e-9)]
   #df_cut <- data.frame(candidate=1:length(localmins_cut), lambda = lams[localmins_cut])
-  cvplt <- result$cv %>% as.data.frame() %>% filter(lambda>= lower & lambda <= upper & lambda <= cutoff) %>% ggplot(aes(x=lambda, y=cv))  +  geom_point()+ scale_x_log10() + theme_bw()+
+  cvplt <- result$cv %>% as.data.frame() %>% filter(lambda>= lower & lambda <= upper) %>% ggplot(aes(x=lambda, y=cv))  +  geom_point()+ scale_x_log10() + theme_bw()+
     theme(panel.grid=element_blank()) + ylab("Coefficient of Variation") + xlab("λ")+ ggtitle("(i)") +
     geom_vline(aes(xintercept=lam_optim_sub),color="blue" ,lty="dashed") + theme(aspect.ratio=1)
 

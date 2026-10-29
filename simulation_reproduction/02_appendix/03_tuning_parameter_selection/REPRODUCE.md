@@ -13,6 +13,15 @@ own working directories and writes `flower_panel.png` and `cashew_panel.png`.
 Neither plotter executes another simulation script. The separate generators
 remain optional precomputation tools for these same experiments.
 
+The production surface configuration is N=2500, noise SD 0.02 (variance
+0.0004), and a 100-value lambda grid. The smaller N=250/10-lambda setup was
+an older demonstration configuration. The archived production source and a
+direct pixel comparison with the published point-cloud panel support N=2500
+and SD 0.02; the latest draft's variance 0.004 is inconsistent with these.
+Selection uses lambda strictly below the example's elbow cutoff, while all
+available diagnostic values remain visible. Residual-average axes are labeled
+"Volume-averaged conditional squared residual" as in the draft's TeX overlay.
+
 The full calculations are expensive. Script paths can be supplied from any
 working directory. For reduced validation set `PME_SMOKE_TEST=1` and direct
 `PME_OUTPUT_DIR` to a temporary directory. `code/hpc/sphere.sh` preserves the

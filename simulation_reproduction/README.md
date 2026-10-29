@@ -64,15 +64,23 @@ simulation_reproduction/
 
 ## Manuscript-native figures
 
-Three figures are drawn directly in LaTeX/TikZ and therefore do not have standalone image files in this library:
+Four figures are drawn directly in LaTeX/TikZ and therefore do not have standalone image files in this library:
 
 1. The fitted curve, projection, and residual illustration (`fig:proj-curve`).
 2. The ellipse and medial axis illustration (`fig:ellipse-medial-axis`).
 3. The projection-adaptation basin-of-attraction illustration (`fig:placeholder`).
+4. The corrugation angular-cell coupling illustration
+   (`fig:corrugation-angular-cells`), included as
+   `manuscript_native/corrugation_angular_cells.tex` from the latest draft.
 
-Their source remains in the main manuscript's LaTeX file. They are recorded in
+The first three sources remain in the main manuscript's LaTeX file. They are recorded in
 `MANIFEST.csv` as manuscript-native figures and do not require R simulation
 code.
+
+The October 29 draft is titled *Principal Manifold Estimation with Riemannian
+Templates*. `DRAFT_ALIGNMENT_2026-10-29.md` records the audit and source-based
+resolutions of discrepancies. The downstream criterion and Figure 5.2 now use
+the draft's mean fold MSE; legacy RMSE columns are retained as diagnostics.
 
 ## Status note on the current PDF
 

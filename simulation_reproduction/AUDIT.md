@@ -3,6 +3,11 @@
 Audit target: `simulation_reproduction/`
 Independence pass completed: October 13, 2026.
 
+Latest-draft follow-up: see `DRAFT_ALIGNMENT_2026-10-29.md`. That audit
+supersedes the historical Figure 5.2 RMSE rendering and the older surface
+driver settings. Figure 5.2 now uses mean fold MSE; the verified production
+surface configuration is N=2500 and SD=0.02.
+
 The independent workflows are now the official local versions. The repository
 README and simulation README identify them as the maintained source of record;
 the manifests map each publication asset to its canonical entry point.
@@ -76,8 +81,10 @@ replace publication inputs.
 
 ## Appearance and dependencies
 
-Figure 5.2 and the corrected Figure 3.1 remain identical to the supplied
-manuscript assets. The original Ipe star-convex PNG is unchanged. The default
+At the October 13 audit, Figure 5.2 and the corrected Figure 3.1 matched the
+then-supplied manuscript assets. The October 29 follow-up re-renders Figure 5.2
+in MSE units and updates Figure 5.1 from the new draft. The original Ipe
+star-convex PNG is unchanged. The default
 Poisson figure now preserves the historical view and shading exactly through
 its own original surface snapshot. The optional fresh rgl mode does not claim
 an exact camera or triangulation match to that historical snapshot.
